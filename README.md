@@ -6,4 +6,4 @@ An unofficial CLI package manager for [FoundryVTT](https://foundryvtt.com), writ
 
 ## License
 
-See [LICENSE](LICENSE).
+See [LICENSE](LICENSE.md).

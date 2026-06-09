@@ -2,7 +2,7 @@
 name = "ufpm"
 edition = "2024"
 version = "0.0.1"
-license-file = "LICENSE"
+license-file = "LICENSE.md"
 readme = "README.md"
 rust-version = "1.96.0"
 publish = false
@@ -25,6 +25,15 @@ module_name_repetitions = "warn"
 semicolon_if_nothing_returned = "warn"
 
 [dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "env"] }
+dirs = "6.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.20"
 
 # We create a separate profile called 'fast' that disables all optimisation in favour of faster compilation for use in CI.
 [profile.fast]

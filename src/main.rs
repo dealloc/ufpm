@@ -1,3 +1,31 @@
-fn main() {
-    println!("Hello, world!");
+//! `ufpm` — an unofficial command-line package manager for `FoundryVTT`.
+//!
+//! `ufpm` manages modules and systems inside a local `FoundryVTT` user-data
+//! directory, working around the limitations of Foundry's built-in package
+//! manager. See `PLAN.md` at the repository root for the overall design.
+
+mod cli;
+mod commands;
+mod constants;
+mod foundry;
+mod ui;
+
+use clap::Parser;
+use std::process::ExitCode;
+
+/// Parses the command line, dispatches to the requested command and renders
+/// any resulting error (with its cause chain) on stderr.
+fn main() -> ExitCode {
+    let args = cli::Args::parse();
+
+    match commands::run(&args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {error}");
+            for cause in error.chain().skip(1) {
+                eprintln!("  caused by: {cause}");
+            }
+            ExitCode::FAILURE
+        }
+    }
 }
