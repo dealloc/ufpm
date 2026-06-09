@@ -100,6 +100,47 @@ impl Client {
         serde_json::from_str(&text).map_err(Error::Invalid)
     }
 
+    /// Resolves the time-limited signed download URL for a protected
+    /// (purchased) package via `POST /_api/packages/auth`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] when the request fails, the API rejects it, or
+    /// the response carries no download URL.
+    pub async fn get_protected_download(
+        &self,
+        kind: PackageType,
+        name: &str,
+        version: &str,
+    ) -> Result<String, Error> {
+        let body = serde_json::json!({
+            "type": kind.api_name(),
+            "name": name,
+            "version": version,
+            "license": self.license,
+        });
+
+        let response = self
+            .http
+            .post(format!("{}/_api/packages/auth", self.base_url))
+            .header(reqwest::header::AUTHORIZATION, constants::API_KEY)
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(Error::Http { status });
+        }
+        let text = response.text().await?;
+        let auth: types::AuthResponse = serde_json::from_str(&text).map_err(Error::Invalid)?;
+        if auth.status != "success" {
+            return Err(Error::Failed(auth.status));
+        }
+        auth.download
+            .ok_or_else(|| Error::Failed("auth response carried no download URL".to_owned()))
+    }
+
     /// Fetches the full package index for one package type and returns the
     /// raw response body.
     ///
@@ -208,6 +249,37 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, Error::Http { .. }));
+    }
+
+    /// The auth endpoint receives type/name/version plus the license and
+    /// yields the signed download URL.
+    #[tokio::test]
+    async fn resolves_protected_download_urls() {
+        let server = MockServer::start().await;
+        let license = serde_json::json!({ "license": "opaque-blob" });
+        Mock::given(method("POST"))
+            .and(path("/_api/packages/auth"))
+            .and(header("Authorization", constants::API_KEY))
+            .and(body_partial_json(serde_json::json!({
+                "type": "module",
+                "name": "pf2e-secrets",
+                "version": "4.1.3",
+                "license": { "license": "opaque-blob" },
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{ "status": "success", "download": "https://r2.example.test/signed.zip?sig=abc" }"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = Client::with_base_url(server.uri(), license).unwrap();
+        let url = client
+            .get_protected_download(PackageType::Module, "pf2e-secrets", "4.1.3")
+            .await
+            .unwrap();
+
+        assert_eq!(url, "https://r2.example.test/signed.zip?sig=abc");
     }
 
     /// A body-level non-success status is reported as a failure.

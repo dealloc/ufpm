@@ -95,6 +95,18 @@ pub struct VersionInfo {
     pub notes: Option<String>,
 }
 
+/// The response of `POST /_api/packages/auth` (protected downloads).
+#[derive(Debug, Deserialize)]
+pub struct AuthResponse {
+    /// `"success"` on success; anything else marks a rejected request.
+    #[serde(default)]
+    pub status: String,
+
+    /// The time-limited signed download URL.
+    #[serde(default)]
+    pub download: Option<String>,
+}
+
 /// A package manifest fetched from its (third-party) manifest URL.
 ///
 /// Only the fields the install pipeline needs are modelled; manifests in the

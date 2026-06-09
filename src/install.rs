@@ -84,8 +84,13 @@ pub struct Job {
     /// The version being installed (for filenames and reporting).
     pub version: String,
 
-    /// The release zip URL from the package manifest.
+    /// The release zip URL: from the package manifest for free packages, a
+    /// time-limited signed URL for protected ones.
     pub download_url: String,
+
+    /// Whether the package is protected (signed URLs expire and must be
+    /// re-requested when a download fails with an authorization error).
+    pub protected: bool,
 }
 
 impl Job {
@@ -281,6 +286,33 @@ fn swap_in(
     Ok(())
 }
 
+/// Removes an installed package transactionally: the directory is renamed
+/// into the trash area first (one atomic disappearance), then deleted
+/// best-effort — a failed deletion is swept by [`recover`] on the next run
+/// instead of leaving a half-removed package in place.
+///
+/// # Errors
+///
+/// Returns an [`Error`] when the package directory cannot be moved away.
+pub fn remove(installation: &Installation, kind: PackageType, name: &str) -> Result<(), Error> {
+    let target = installation.packages_dir(kind).join(name);
+    let trash_parent = ufpm_dir(installation).join("trash").join(kind.directory());
+    std::fs::create_dir_all(&trash_parent).map_err(|source| Error::Io {
+        path: trash_parent.clone(),
+        source,
+    })?;
+    let trash = trash_parent.join(name);
+    remove_if_exists(&trash)?;
+
+    std::fs::rename(&target, &trash).map_err(|source| Error::Io {
+        path: target,
+        source,
+    })?;
+    // Best-effort: leftovers in the trash are swept by `recover` next run.
+    let _ = std::fs::remove_dir_all(&trash);
+    Ok(())
+}
+
 /// What [`recover`] found and did.
 #[derive(Debug, Default)]
 pub struct Recovery {
@@ -322,9 +354,11 @@ pub fn recover(installation: &Installation) -> Recovery {
         }
     }
 
-    let staging = base.join("staging");
-    if staging.exists() {
-        let _ = std::fs::remove_dir_all(&staging);
+    for transient in ["staging", "trash"] {
+        let dir = base.join(transient);
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
     recovery
 }
@@ -394,7 +428,38 @@ mod tests {
             name: "pkg".to_owned(),
             version: "2.0.0".to_owned(),
             download_url: String::new(),
+            protected: false,
         }
+    }
+
+    /// Removing a package moves it out atomically and leaves nothing behind.
+    #[test]
+    fn remove_deletes_the_package() {
+        let dir = tempfile::tempdir().unwrap();
+        let installation = fake_foundry(dir.path());
+        let target = installation.packages_dir(PackageType::Module).join("pkg");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("module.json"), r#"{ "id": "pkg" }"#).unwrap();
+
+        remove(&installation, PackageType::Module, "pkg").unwrap();
+
+        assert!(!target.exists());
+        assert!(
+            !ufpm_dir(&installation)
+                .join("trash")
+                .join("modules")
+                .join("pkg")
+                .exists()
+        );
+    }
+
+    /// Removing something that is not installed fails cleanly.
+    #[test]
+    fn remove_missing_package_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let installation = fake_foundry(dir.path());
+
+        assert!(remove(&installation, PackageType::Module, "ghost").is_err());
     }
 
     /// Installing into an empty slot lands the package and cleans up.

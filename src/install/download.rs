@@ -45,11 +45,19 @@ pub enum Error {
 /// The sidecar persisted next to a partial download.
 #[derive(Debug, Deserialize, Serialize)]
 struct Meta {
-    /// The URL the partial data came from.
+    /// The canonical URL (without query/fragment) the partial data came
+    /// from. Signed URLs are re-issued with fresh query parameters, so the
+    /// query must not participate in resume matching; the `If-Range`
+    /// validator protects against actual content changes.
     url: String,
 
     /// The server's `ETag` or `Last-Modified` value, used with `If-Range`.
     validator: Option<String>,
+}
+
+/// Strips the query and fragment off a URL for resume matching.
+fn canonical(url: &str) -> &str {
+    url.split(['?', '#']).next().unwrap_or(url)
 }
 
 /// Downloads `url` to `dest`, resuming a matching partial download when
@@ -169,7 +177,7 @@ fn resumable_bytes(part: &Path, meta_path: &Path, url: &str) -> Option<(u64, Str
         return None;
     }
     let meta: Meta = serde_json::from_str(&std::fs::read_to_string(meta_path).ok()?).ok()?;
-    if meta.url != url {
+    if meta.url != canonical(url) {
         return None;
     }
     Some((size, meta.validator?))
@@ -209,7 +217,7 @@ fn write_meta(meta_path: &Path, url: &str, validator: Option<String>) -> Result<
         std::fs::create_dir_all(parent).map_err(|source| io_error(parent, source))?;
     }
     let meta = Meta {
-        url: url.to_owned(),
+        url: canonical(url).to_owned(),
         validator,
     };
     let contents = serde_json::to_string(&meta).unwrap_or_default();
@@ -339,6 +347,40 @@ mod tests {
         fetch(&reqwest::Client::new(), &url, &dest, &bar())
             .await
             .unwrap();
+
+        assert_eq!(std::fs::read(&dest).unwrap(), PAYLOAD);
+    }
+
+    /// A re-signed URL (same path, different query) still resumes: signed
+    /// hosts re-issue URLs with fresh signatures after expiry.
+    #[tokio::test]
+    async fn resumes_across_resigned_urls() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pkg.zip"))
+            .and(header("Range", "bytes=10-"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(&PAYLOAD[10..]))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("pkg.zip");
+        std::fs::write(part_path(&dest), &PAYLOAD[..10]).unwrap();
+        write_meta(
+            &meta_path(&dest),
+            &format!("{}/pkg.zip?sig=old", server.uri()),
+            Some("\"v1\"".to_owned()),
+        )
+        .unwrap();
+
+        fetch(
+            &reqwest::Client::new(),
+            &format!("{}/pkg.zip?sig=fresh", server.uri()),
+            &dest,
+            &bar(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(std::fs::read(&dest).unwrap(), PAYLOAD);
     }

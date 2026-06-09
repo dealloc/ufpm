@@ -48,6 +48,8 @@ pub struct Reporter {
     verbosity: Verbosity,
     /// Whether animated progress UI (spinners, bars) may be drawn.
     progress: bool,
+    /// Whether stderr is a terminal a human can answer prompts on.
+    interactive: bool,
 }
 
 impl Reporter {
@@ -55,10 +57,34 @@ impl Reporter {
     /// by `--no-progress` and whenever stderr is not a terminal.
     #[must_use]
     pub fn new(global: &GlobalArgs) -> Self {
+        let terminal = std::io::stderr().is_terminal();
         Self {
             verbosity: Verbosity::from_flags(global.quiet, global.verbose),
-            progress: !global.no_progress && std::io::stderr().is_terminal(),
+            progress: !global.no_progress && terminal,
+            interactive: terminal,
         }
+    }
+
+    /// Asks a yes/no confirmation on stderr (defaulting to "no").
+    ///
+    /// `assume_yes` (the `--yes` flag) short-circuits to `true`; in a
+    /// non-interactive session without `--yes` this refuses to guess.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the session is non-interactive and `--yes` was not given,
+    /// or when the prompt itself fails.
+    pub fn confirm(&self, prompt: &str, assume_yes: bool) -> anyhow::Result<bool> {
+        if assume_yes {
+            return Ok(true);
+        }
+        if !self.interactive {
+            anyhow::bail!("not an interactive session; pass --yes to confirm: {prompt}");
+        }
+        Ok(dialoguer::Confirm::new()
+            .with_prompt(prompt)
+            .default(false)
+            .interact()?)
     }
 
     /// Prints a status line; shown unless `--quiet` is set.

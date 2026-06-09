@@ -53,12 +53,8 @@ pub async fn run(
         PackageAction::Info { name } => info(kind, name, global, reporter).await,
         PackageAction::Outdated { check } => outdated(kind, *check, global, reporter).await,
         PackageAction::Install { names } => install_packages(kind, names, global, reporter).await,
-        PackageAction::Update { names } => {
-            not_implemented(&format!("{kind} update {}", names.join(" ")))
-        }
-        PackageAction::Remove { names } => {
-            not_implemented(&format!("{kind} remove {}", names.join(" ")))
-        }
+        PackageAction::Update { names } => update_packages(kind, names, global, reporter).await,
+        PackageAction::Remove { names } => remove_packages(kind, names, global, reporter),
         PackageAction::Unused { prune } => not_implemented(&format!(
             "{kind} unused{}",
             if *prune { " --prune" } else { "" }
@@ -375,7 +371,184 @@ async fn install_packages(
     let mut summary = Summary::default();
     let requests = select_install_requests(names, &snapshot, &installed, reporter, &mut summary);
     let jobs = resolve_jobs(&client, kind, &requests, reporter, &mut summary).await;
-    execute_jobs(&installation, &client, jobs, reporter, &mut summary).await?;
+    execute_jobs(
+        &installation,
+        &client,
+        jobs,
+        "installed",
+        reporter,
+        &mut summary,
+    )
+    .await?;
+
+    Ok(summary.finish(reporter))
+}
+
+/// Updates the named packages — or, with no names, everything outdated.
+///
+/// Unnamed (bulk) updates only apply provably newer versions; packages whose
+/// local version merely *differs* are skipped and must be updated by name.
+///
+/// # Errors
+///
+/// Fails when the index or installation cannot be loaded at all; individual
+/// package failures are reported in the summary and through the exit code.
+async fn update_packages(
+    kind: PackageType,
+    names: &[String],
+    global: &GlobalArgs,
+    reporter: &Reporter,
+) -> anyhow::Result<ExitCode> {
+    let (installation, snapshot, client) = load_snapshot(kind, global, reporter).await?;
+    report_recovery(&install::recover(&installation), reporter);
+    let installed = installed_map(&installation, kind, reporter)?;
+
+    let mut summary = Summary::default();
+    let requests =
+        select_update_requests(kind, names, &snapshot, &installed, reporter, &mut summary);
+    if requests.is_empty() && summary.is_empty() {
+        reporter.status(&format!("all installed {kind}s are up to date"));
+        return Ok(ExitCode::SUCCESS);
+    }
+    let jobs = resolve_jobs(&client, kind, &requests, reporter, &mut summary).await;
+    execute_jobs(
+        &installation,
+        &client,
+        jobs,
+        "updated",
+        reporter,
+        &mut summary,
+    )
+    .await?;
+
+    Ok(summary.finish(reporter))
+}
+
+/// Picks the packages an update run should touch, recording immediate
+/// successes/failures in the summary.
+fn select_update_requests<'a>(
+    kind: PackageType,
+    names: &[String],
+    snapshot: &'a index::Snapshot,
+    installed: &HashMap<String, local::Installed>,
+    reporter: &Reporter,
+    summary: &mut Summary,
+) -> Vec<&'a api::types::Package> {
+    let by_name: HashMap<&str, &api::types::Package> = snapshot
+        .packages
+        .iter()
+        .map(|package| (package.name.as_str(), package))
+        .collect();
+    let mut requests = Vec::new();
+
+    if names.is_empty() {
+        let mut changed = 0usize;
+        let mut delisted = 0usize;
+        for (id, local) in installed {
+            let Some(package) = by_name.get(id.as_str()) else {
+                delisted += 1;
+                continue;
+            };
+            match version_status(local, package) {
+                Comparison::Same => {}
+                Comparison::Changed => changed += 1,
+                Comparison::Newer => {
+                    if package.is_protected && !snapshot.owned.contains(&package.id) {
+                        summary.fail(id, &package.version.version, "protected; purchase required");
+                    } else {
+                        warn_core_compatibility(package, reporter);
+                        requests.push(*package);
+                    }
+                }
+            }
+        }
+        if changed > 0 {
+            reporter.status(&format!(
+                "skipped {changed} {kind}(s) whose local version differs without being older; update them by name to force"
+            ));
+        }
+        if delisted > 0 {
+            reporter.detail(&format!(
+                "{delisted} installed {kind}(s) are not listed in the index"
+            ));
+        }
+        return requests;
+    }
+
+    let mut seen: HashSet<&str> = HashSet::new();
+    for name in names {
+        if !seen.insert(name.as_str()) {
+            continue;
+        }
+        let Some(local) = installed.get(name) else {
+            summary.fail(name, "-", "not installed; use `install`");
+            continue;
+        };
+        let Some(package) = by_name.get(name.as_str()) else {
+            summary.fail(name, "-", "not found in the index");
+            continue;
+        };
+        if package.is_protected && !snapshot.owned.contains(&package.id) {
+            summary.fail(name, "-", "protected; purchase required");
+            continue;
+        }
+        if version_status(local, package) == Comparison::Same {
+            summary.ok(name, &package.version.version, "already up to date");
+            continue;
+        }
+        warn_core_compatibility(package, reporter);
+        requests.push(*package);
+    }
+    requests
+}
+
+/// Removes the named packages after one consolidated confirmation.
+///
+/// # Errors
+///
+/// Fails when the installation cannot be resolved or confirmation is
+/// impossible (non-interactive without `--yes`).
+fn remove_packages(
+    kind: PackageType,
+    names: &[String],
+    global: &GlobalArgs,
+    reporter: &Reporter,
+) -> anyhow::Result<ExitCode> {
+    let installation = discovery::resolve(global.data_path.as_deref())?;
+    report_recovery(&install::recover(&installation), reporter);
+    let installed = installed_map(&installation, kind, reporter)?;
+
+    let mut summary = Summary::default();
+    let mut targets: Vec<&str> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for name in names {
+        if !seen.insert(name.as_str()) {
+            continue;
+        }
+        if installed.contains_key(name) {
+            targets.push(name);
+        } else {
+            summary.fail(name, "-", "not installed");
+        }
+    }
+
+    if !targets.is_empty() {
+        let listing = targets.join(", ");
+        if !reporter.confirm(&format!("remove {kind}(s): {listing}?"), global.yes)? {
+            reporter.status("aborted; nothing was removed");
+            return Ok(ExitCode::SUCCESS);
+        }
+        for name in targets {
+            let version = installed[name]
+                .version
+                .clone()
+                .unwrap_or_else(|| "?".to_owned());
+            match install::remove(&installation, kind, name) {
+                Ok(()) => summary.ok(name, &version, "removed"),
+                Err(error) => summary.fail(name, &version, &error_chain(&error)),
+            }
+        }
+    }
 
     Ok(summary.finish(reporter))
 }
@@ -414,13 +587,8 @@ fn select_install_requests<'a>(
             summary.fail(name, "-", "not found in the index");
             continue;
         };
-        if package.is_protected {
-            let reason = if snapshot.owned.contains(&package.id) {
-                "protected packages are not supported yet"
-            } else {
-                "protected; purchase required"
-            };
-            summary.fail(name, "-", reason);
+        if package.is_protected && !snapshot.owned.contains(&package.id) {
+            summary.fail(name, "-", "protected; purchase required");
             continue;
         }
         if let Some(local) = installed.get(name)
@@ -478,6 +646,7 @@ async fn execute_jobs(
     installation: &Installation,
     client: &api::Client,
     jobs: Vec<install::Job>,
+    verb: &str,
     reporter: &Reporter,
     summary: &mut Summary,
 ) -> anyhow::Result<()> {
@@ -489,10 +658,9 @@ async fn execute_jobs(
     let downloaded: Vec<(install::Job, Result<std::path::PathBuf, install::Error>)> =
         futures_util::stream::iter(jobs.into_iter().map(|job| {
             let bar = progress.bar(&job.name);
-            let http = client.http();
             let downloads_dir = downloads_dir.clone();
             async move {
-                let result = install::download_archive(http, &downloads_dir, &job, &bar).await;
+                let result = download_with_reauth(client, &downloads_dir, &job, &bar).await;
                 bar.finish_and_clear();
                 (job, result)
             }
@@ -508,13 +676,44 @@ async fn execute_jobs(
         };
         match outcome {
             Ok(()) => {
-                reporter.detail(&format!("installed {} {}", job.name, job.version));
-                summary.ok(&job.name, &job.version, "installed");
+                reporter.detail(&format!("{verb} {} {}", job.name, job.version));
+                summary.ok(&job.name, &job.version, verb);
             }
             Err(error) => summary.fail(&job.name, &job.version, &error_chain(&error)),
         }
     }
     Ok(())
+}
+
+/// Downloads a job's archive; when a protected download is rejected with an
+/// authorization error (the signed URL expired), a fresh URL is requested
+/// once and the download retried — resuming whatever was already fetched.
+///
+/// # Errors
+///
+/// Returns an [`install::Error`] when the download ultimately fails.
+async fn download_with_reauth(
+    client: &api::Client,
+    downloads_dir: &std::path::Path,
+    job: &install::Job,
+    bar: &indicatif::ProgressBar,
+) -> Result<std::path::PathBuf, install::Error> {
+    let result = install::download_archive(client.http(), downloads_dir, job, bar).await;
+    if job.protected
+        && let Err(install::Error::Download {
+            source: install::download::Error::Http { status },
+            ..
+        }) = &result
+        && matches!(status.as_u16(), 401 | 403)
+        && let Ok(fresh_url) = client
+            .get_protected_download(job.kind, &job.name, &job.version)
+            .await
+    {
+        let mut fresh = job.clone();
+        fresh.download_url = fresh_url;
+        return install::download_archive(client.http(), downloads_dir, &fresh, bar).await;
+    }
+    result
 }
 
 /// Accumulates the end-of-run summary of a mutating command.
@@ -528,6 +727,11 @@ struct Summary {
 }
 
 impl Summary {
+    /// Whether nothing has been recorded yet.
+    fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
     /// Records a successful operation.
     fn ok(&mut self, name: &str, version: &str, note: &str) {
         self.rows.push(Self::row("✓", name, version, note));
@@ -549,10 +753,13 @@ impl Summary {
         ]
     }
 
-    /// Prints the summary table and converts the result to an exit code.
+    /// Prints the summary table (when anything happened) and converts the
+    /// result to an exit code.
     fn finish(mut self, reporter: &Reporter) -> ExitCode {
-        self.rows.sort_by(|a, b| a[1].cmp(&b[1]));
-        reporter.summary(&["", "NAME", "VERSION", "RESULT"], &self.rows);
+        if !self.is_empty() {
+            self.rows.sort_by(|a, b| a[1].cmp(&b[1]));
+            reporter.summary(&["", "NAME", "VERSION", "RESULT"], &self.rows);
+        }
         if self.failed {
             ExitCode::FAILURE
         } else {
@@ -588,17 +795,33 @@ fn warn_core_compatibility(package: &api::types::Package, reporter: &Reporter) {
     }
 }
 
-/// Resolves a package's manifest into an installable [`install::Job`].
+/// Resolves a package into an installable [`install::Job`]: protected
+/// packages go through the auth endpoint for a signed URL, free packages
+/// through their manifest.
 ///
 /// # Errors
 ///
-/// Returns a human-readable reason when the manifest cannot be fetched,
-/// declares no download URL, or belongs to a different package.
+/// Returns a human-readable reason when the URL cannot be resolved or the
+/// manifest belongs to a different package.
 async fn resolve_job(
     client: &api::Client,
     kind: PackageType,
     package: &api::types::Package,
 ) -> Result<install::Job, String> {
+    if package.is_protected {
+        let download = client
+            .get_protected_download(kind, &package.name, &package.version.version)
+            .await
+            .map_err(|error| format!("protected download authorization failed: {error}"))?;
+        return Ok(install::Job {
+            kind,
+            name: package.name.clone(),
+            version: package.version.version.clone(),
+            download_url: download,
+            protected: true,
+        });
+    }
+
     let manifest = client
         .fetch_manifest(&package.version.manifest)
         .await
@@ -621,6 +844,7 @@ async fn resolve_job(
             .version()
             .unwrap_or_else(|| package.version.version.clone()),
         download_url: download,
+        protected: false,
     })
 }
 
