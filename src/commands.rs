@@ -36,5 +36,10 @@ pub async fn run(args: &Args) -> anyhow::Result<ExitCode> {
         Command::System { action } => {
             package::run(PackageType::System, action, &args.global, &reporter).await
         }
+        Command::Completions { shell } => {
+            let mut command = <Args as clap::CommandFactory>::command();
+            clap_complete::generate(*shell, &mut command, "ufpm", &mut std::io::stdout());
+            Ok(ExitCode::SUCCESS)
+        }
     }
 }

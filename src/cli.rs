@@ -71,6 +71,14 @@ pub enum Command {
     },
     /// Diagnose the local setup: resolved paths, license and cache state.
     Doctor,
+
+    /// Generate a shell completion script on stdout.
+    #[command(hide = true)]
+    Completions {
+        /// The shell to generate completions for.
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 /// Operations on the cached package index.
