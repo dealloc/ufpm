@@ -1,0 +1,41 @@
+[package]
+name = "ufpm"
+edition = "2024"
+version = "0.0.1"
+license-file = "LICENSE"
+readme = "README.md"
+rust-version = "1.96.0"
+publish = false
+repository = "https://github.com/dealloc/ufpm"
+authors = ["Wannes Gennar <info@dealloc.be>"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.rustdoc]
+private_intra_doc_links = "allow"
+
+[lints.clippy]
+pedantic = "warn"
+suspicious = "warn"
+complexity = "warn"
+missing_docs_in_private_items = "warn"
+module_name_repetitions = "warn"
+semicolon_if_nothing_returned = "warn"
+
+[dependencies]
+
+# We create a separate profile called 'fast' that disables all optimisation in favour of faster compilation for use in CI.
+[profile.fast]
+inherits = "dev"
+opt-level = 0
+codegen-units = 256
+strip = "none"
+debug-assertions = true
+overflow-checks = true
+lto = false
+incremental = true
+
+[profile.fast.package."*"]
+opt-level = 0

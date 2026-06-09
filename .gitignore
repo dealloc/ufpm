@@ -1,0 +1,11 @@
+/target
+.idea/
+
+# OSX files
+.DS_Store
+
+# Generated files
+CHANGELOG.md
+
+# AI files
+.claude/settings.local.json

@@ -1,0 +1,13 @@
+# Set the default behaviour, in case people don't have core.autocrlf set.
+* text=auto eol=lf
+
+# Give nicer diffs where possible
+*.rs   diff=rust
+*.toml diff=toml
+
+# Treat binary game assets as binary files
+*.png  binary
+*.jpg  binary
+*.glb  binary
+*.ogg  binary
+*.wav  binary
