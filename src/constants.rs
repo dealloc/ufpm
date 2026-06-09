@@ -12,6 +12,9 @@ pub const API_KEY: &str = "APIKey:foundryvtt_hkmg5t4zxc092e31mkfbg3";
 /// How long a cached package index stays fresh before being refreshed.
 pub const INDEX_TTL: Duration = Duration::from_hours(24);
 
+/// Maximum number of package archives downloaded in parallel.
+pub const DOWNLOAD_CONCURRENCY: usize = 4;
+
 /// The `FoundryVTT` release version reported to the package API and used for
 /// compatibility warnings.
 ///

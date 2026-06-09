@@ -4,6 +4,7 @@
 //! only pin down the fields `ufpm` uses, default everything non-essential,
 //! and ignore unknown fields so new API fields never break parsing.
 
+use crate::foundry::local::VersionField;
 use serde::Deserialize;
 
 /// The response of `POST /_api/packages/get` for one package type.
@@ -92,6 +93,44 @@ pub struct VersionInfo {
     /// URL of the release notes, when published.
     #[serde(default)]
     pub notes: Option<String>,
+}
+
+/// A package manifest fetched from its (third-party) manifest URL.
+///
+/// Only the fields the install pipeline needs are modelled; manifests in the
+/// wild are wildly inconsistent, so everything is optional and tolerant.
+#[derive(Debug, Deserialize)]
+pub struct RemoteManifest {
+    /// The package id (`FoundryVTT` v10+).
+    #[serde(default)]
+    id: Option<String>,
+
+    /// The legacy package identifier (pre-v10 manifests).
+    #[serde(default)]
+    name: Option<String>,
+
+    /// The declared version; a string in modern manifests but occasionally
+    /// a bare number in old ones.
+    #[serde(default)]
+    version: Option<VersionField>,
+
+    /// URL of the release zip archive.
+    #[serde(default)]
+    pub download: Option<String>,
+}
+
+impl RemoteManifest {
+    /// The package id, with the legacy `name` fallback.
+    #[must_use]
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref().or(self.name.as_deref())
+    }
+
+    /// The declared version, normalized to a string.
+    #[must_use]
+    pub fn version(&self) -> Option<String> {
+        self.version.as_ref().map(VersionField::as_string)
+    }
 }
 
 #[cfg(test)]

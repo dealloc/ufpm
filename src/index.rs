@@ -146,6 +146,12 @@ impl Cache {
         &self.dir
     }
 
+    /// The directory package archives (and partial downloads) are kept in.
+    #[must_use]
+    pub fn downloads_dir(&self) -> PathBuf {
+        self.dir.join("downloads")
+    }
+
     /// Returns the index for one package type, fetching or refreshing it as
     /// needed.
     ///

@@ -10,6 +10,7 @@ mod commands;
 mod constants;
 mod foundry;
 mod index;
+mod install;
 mod ui;
 
 use clap::Parser;

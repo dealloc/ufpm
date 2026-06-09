@@ -6,7 +6,7 @@
 //! checks verbosity levels itself.
 
 use crate::cli::GlobalArgs;
-use indicatif::ProgressBar;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::io::IsTerminal;
 use std::time::Duration;
 
@@ -97,12 +97,77 @@ impl Reporter {
             ProgressBar::hidden()
         }
     }
+
+    /// Creates the progress UI for a batch of parallel downloads.
+    #[must_use]
+    pub fn downloads(&self) -> Downloads {
+        Downloads {
+            multi: (self.progress && self.verbosity >= Verbosity::Normal).then(MultiProgress::new),
+        }
+    }
+
+    /// Prints the end-of-run summary table of a mutating command on stderr,
+    /// so it never pollutes pipeable stdout data.
+    pub fn summary(&self, header: &[&str], rows: &[Vec<String>]) {
+        if self.verbosity >= Verbosity::Normal {
+            for line in render_table(header, rows) {
+                eprintln!("{line}");
+            }
+        }
+    }
+}
+
+/// Progress UI for a batch of parallel downloads (one bar per download
+/// under a shared `MultiProgress`).
+#[derive(Debug)]
+pub struct Downloads {
+    /// The multi-bar manager; `None` when progress UI is disabled.
+    multi: Option<MultiProgress>,
+}
+
+impl Downloads {
+    /// Adds a progress bar for one download, labelled with `name`. Hidden
+    /// (but fully functional) when progress UI is disabled.
+    #[must_use]
+    pub fn bar(&self, name: &str) -> ProgressBar {
+        self.multi
+            .as_ref()
+            .map_or_else(ProgressBar::hidden, |multi| {
+                let bar = multi.add(ProgressBar::no_length());
+                bar.set_style(spinner_bytes_style());
+                bar.set_message(name.to_owned());
+                bar.enable_steady_tick(Duration::from_millis(120));
+                bar
+            })
+    }
+}
+
+/// Bar style for downloads with a known total size (MB transferred, speed).
+#[must_use]
+pub fn byte_bar_style() -> ProgressStyle {
+    ProgressStyle::with_template(
+        "{msg:<28!} [{bar:25}] {bytes:>10} / {total_bytes:<10} {bytes_per_sec}",
+    )
+    .unwrap_or_else(|_| ProgressStyle::default_bar())
+}
+
+/// Spinner style for downloads whose total size is unknown.
+fn spinner_bytes_style() -> ProgressStyle {
+    ProgressStyle::with_template("{spinner} {msg:<28!} {bytes:>10} {bytes_per_sec}")
+        .unwrap_or_else(|_| ProgressStyle::default_spinner())
 }
 
 /// Prints rows as a space-aligned table on stdout (the table *is* command
-/// data). The last column is printed unpadded so long text never produces
-/// trailing whitespace.
+/// data).
 pub fn print_table(header: &[&str], rows: &[Vec<String>]) {
+    for line in render_table(header, rows) {
+        println!("{line}");
+    }
+}
+
+/// Renders rows as space-aligned table lines. The last column is left
+/// unpadded so long text never produces trailing whitespace.
+fn render_table(header: &[&str], rows: &[Vec<String>]) -> Vec<String> {
     let columns = header.len();
     let mut widths: Vec<usize> = header.iter().map(|cell| cell.chars().count()).collect();
     for row in rows {
@@ -121,13 +186,14 @@ pub fn print_table(header: &[&str], rows: &[Vec<String>]) {
                 line.extend(std::iter::repeat_n(' ', width - cell.chars().count() + 2));
             }
         }
-        println!("{}", line.trim_end());
+        line.trim_end().to_owned()
     };
 
-    render(header.to_vec());
+    let mut lines = vec![render(header.to_vec())];
     for row in rows {
-        render(row.iter().map(String::as_str).collect());
+        lines.push(render(row.iter().map(String::as_str).collect()));
     }
+    lines
 }
 
 /// Formats a duration as a compact human-readable age such as `45s`, `12m`,

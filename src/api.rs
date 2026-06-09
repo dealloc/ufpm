@@ -74,6 +74,32 @@ impl Client {
         })
     }
 
+    /// The underlying HTTP client, for downloads from third-party hosts.
+    #[must_use]
+    pub fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
+    /// Fetches and parses a package manifest from its manifest URL.
+    ///
+    /// Manifest URLs point at arbitrary third-party hosts (GitHub, GitLab,
+    /// random S3 buckets …), so — deliberately — no `Authorization` header
+    /// is sent here.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] when the request fails, the host answers with a
+    /// non-success status, or the body is not a JSON manifest.
+    pub async fn fetch_manifest(&self, url: &str) -> Result<types::RemoteManifest, Error> {
+        let response = self.http.get(url).send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(Error::Http { status });
+        }
+        let text = response.text().await?;
+        serde_json::from_str(&text).map_err(Error::Invalid)
+    }
+
     /// Fetches the full package index for one package type and returns the
     /// raw response body.
     ///

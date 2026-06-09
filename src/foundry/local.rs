@@ -85,13 +85,14 @@ pub fn scan(installation: &Installation, kind: PackageType) -> Result<Scan, Erro
     Ok(scan)
 }
 
-/// Reads one installed package directory into an [`Installed`] entry.
+/// Reads one installed (or staged) package directory into an [`Installed`]
+/// entry.
 ///
 /// # Errors
 ///
 /// Returns a human-readable reason when the manifest is missing, unreadable
 /// or lacks an id.
-fn read_installed(path: &Path, kind: PackageType) -> Result<Installed, String> {
+pub(crate) fn read_installed(path: &Path, kind: PackageType) -> Result<Installed, String> {
     let manifest_path = path.join(kind.manifest_filename());
     let raw = std::fs::read_to_string(&manifest_path)
         .map_err(|error| format!("no readable {}: {error}", kind.manifest_filename()))?;
@@ -135,7 +136,7 @@ struct Manifest {
 /// A manifest version that may be either a string or a bare number.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-enum VersionField {
+pub(crate) enum VersionField {
     /// The common case: a version string.
     Text(String),
     /// Legacy manifests sometimes declare `"version": 1.0`.
@@ -143,10 +144,18 @@ enum VersionField {
 }
 
 impl VersionField {
-    /// Normalizes the version to a string.
-    fn into_string(self) -> String {
+    /// Normalizes the version to a string, consuming the field.
+    pub(crate) fn into_string(self) -> String {
         match self {
             Self::Text(text) => text,
+            Self::Number(number) => number.to_string(),
+        }
+    }
+
+    /// Normalizes the version to a string.
+    pub(crate) fn as_string(&self) -> String {
+        match self {
+            Self::Text(text) => text.clone(),
             Self::Number(number) => number.to_string(),
         }
     }
