@@ -5,7 +5,7 @@
 
 use crate::cli::{GlobalArgs, PackageAction};
 use crate::foundry::version::Comparison;
-use crate::foundry::{Installation, PackageType, discovery, local, version};
+use crate::foundry::{Installation, PackageType, discovery, local, version, worlds};
 use crate::ui::{self, Reporter};
 use crate::{api, constants, index, install, resolve};
 use futures_util::StreamExt;
@@ -55,20 +55,8 @@ pub async fn run(
         PackageAction::Install { names } => install_packages(kind, names, global, reporter).await,
         PackageAction::Update { names } => update_packages(kind, names, global, reporter).await,
         PackageAction::Remove { names } => remove_packages(kind, names, global, reporter),
-        PackageAction::Unused { prune } => not_implemented(&format!(
-            "{kind} unused{}",
-            if *prune { " --prune" } else { "" }
-        )),
+        PackageAction::Unused { prune } => unused(kind, *prune, global, reporter).await,
     }
-}
-
-/// Stub for actions scheduled in a later implementation phase (see `PLAN.md`).
-///
-/// # Errors
-///
-/// Always fails with a "not implemented yet" message; that is the point.
-fn not_implemented(action: &str) -> anyhow::Result<ExitCode> {
-    anyhow::bail!("`ufpm {}` is not implemented yet", action.trim_end())
 }
 
 /// Filters applied by [`list`].
@@ -943,6 +931,121 @@ fn warn_core_compatibility(package: &api::types::Package, reporter: &Reporter) {
             constants::foundry_version()
         ));
     }
+}
+
+/// Lists installed packages that no world uses; with `prune`, deletes them
+/// after one confirmation.
+///
+/// While any world is unreadable the usage picture is incomplete: affected
+/// packages are reported as "possibly unused" and are **never** pruned.
+///
+/// # Errors
+///
+/// Fails when the installation or worlds cannot be scanned, or when pruning
+/// cannot be confirmed.
+async fn unused(
+    kind: PackageType,
+    prune: bool,
+    global: &GlobalArgs,
+    reporter: &Reporter,
+) -> anyhow::Result<ExitCode> {
+    let (installation, indexes, _client) = load_indexes(global, reporter).await?;
+    report_recovery(&install::recover(&installation), reporter);
+    let scan = local::scan(&installation, kind)?;
+    for (path, reason) in &scan.skipped {
+        reporter.warn(&format!("skipping {}: {reason}", path.display()));
+    }
+
+    let spinner = reporter.spinner("scanning worlds");
+    let scanned = installation.clone();
+    let usage = tokio::task::spawn_blocking(move || worlds::scan_usage(&scanned))
+        .await
+        .map_err(|join| anyhow::anyhow!("internal failure: {join}"))??;
+    spinner.finish_and_clear();
+
+    reporter.detail(&format!("scanned {} world(s)", usage.worlds));
+    for (world, reason) in &usage.unreadable {
+        reporter.warn(&format!(
+            "world `{world}` could not be inspected ({reason}); usage data is incomplete"
+        ));
+    }
+
+    // A system no world declares can still be needed by an installed module.
+    let required_systems: HashSet<String> = if kind == PackageType::System {
+        let modules = local::scan(&installation, PackageType::Module)?;
+        indexes
+            .module
+            .packages
+            .iter()
+            .filter(|package| modules.packages.iter().any(|m| m.id == package.name))
+            .flat_map(|package| package.systems.iter().cloned())
+            .collect()
+    } else {
+        HashSet::new()
+    };
+
+    let is_used = |id: &str| match kind {
+        PackageType::Module => usage.modules.contains(id),
+        PackageType::System => usage.systems.contains(id) || required_systems.contains(id),
+    };
+    let certain = usage.unreadable.is_empty();
+    let candidates: Vec<&local::Installed> = scan
+        .packages
+        .iter()
+        .filter(|package| !is_used(&package.id))
+        .collect();
+
+    if candidates.is_empty() {
+        reporter.status(&format!(
+            "every installed {kind} is used by at least one world"
+        ));
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    let status = if certain { "unused" } else { "possibly unused" };
+    let rows: Vec<Vec<String>> = candidates
+        .iter()
+        .map(|package| {
+            vec![
+                package.id.clone(),
+                package.version.clone().unwrap_or_else(|| "?".to_owned()),
+                status.to_owned(),
+                package.title.clone().unwrap_or_default(),
+            ]
+        })
+        .collect();
+    ui::print_table(&["NAME", "VERSION", "STATUS", "TITLE"], &rows);
+
+    if !prune {
+        return Ok(ExitCode::SUCCESS);
+    }
+    if !certain {
+        reporter.warn(
+            "refusing to prune: some worlds could not be inspected, so these packages may be in use",
+        );
+        return Ok(ExitCode::FAILURE);
+    }
+
+    let listing = candidates
+        .iter()
+        .map(|package| package.id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let prompt = format!("delete {} unused {kind}(s): {listing}?", candidates.len());
+    if !reporter.confirm(&prompt, global.yes)? {
+        reporter.status("aborted; nothing was removed");
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    let mut summary = Summary::default();
+    for package in candidates {
+        let version = package.version.clone().unwrap_or_else(|| "?".to_owned());
+        match install::remove(&installation, kind, &package.id) {
+            Ok(()) => summary.ok(&package.id, &version, "removed"),
+            Err(error) => summary.fail(&package.id, &version, &error_chain(&error)),
+        }
+    }
+    Ok(summary.finish(reporter))
 }
 
 /// Lists installed packages whose index version differs from the installed

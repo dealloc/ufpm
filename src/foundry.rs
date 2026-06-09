@@ -3,6 +3,7 @@
 pub mod discovery;
 pub mod local;
 pub mod version;
+pub mod worlds;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
