@@ -11,6 +11,7 @@ mod constants;
 mod foundry;
 mod index;
 mod install;
+mod resolve;
 mod ui;
 
 use clap::Parser;

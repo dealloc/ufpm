@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 ///
 /// `FoundryVTT` also knows a `world` package type, which is deprecated and
 /// deliberately unsupported.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum PackageType {
     /// A module: an addon that extends systems or the core software.
     Module,

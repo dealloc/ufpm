@@ -65,6 +65,12 @@ impl Reporter {
         }
     }
 
+    /// Whether stderr is a terminal that can answer prompts.
+    #[must_use]
+    pub fn is_interactive(&self) -> bool {
+        self.interactive
+    }
+
     /// Asks a yes/no confirmation on stderr (defaulting to "no").
     ///
     /// `assume_yes` (the `--yes` flag) short-circuits to `true`; in a

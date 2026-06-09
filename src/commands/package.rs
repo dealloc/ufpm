@@ -7,7 +7,7 @@ use crate::cli::{GlobalArgs, PackageAction};
 use crate::foundry::version::Comparison;
 use crate::foundry::{Installation, PackageType, discovery, local, version};
 use crate::ui::{self, Reporter};
-use crate::{api, constants, index, install};
+use crate::{api, constants, index, install, resolve};
 use futures_util::StreamExt;
 use std::collections::{HashMap, HashSet};
 use std::process::ExitCode;
@@ -106,6 +106,47 @@ async fn load_snapshot(
     let result = cache.ensure(kind, &client, false).await;
     spinner.finish_and_clear();
 
+    let snapshot = report_source(kind, result, reporter)?;
+    Ok((installation, snapshot, client))
+}
+
+/// Resolves the installation and loads **both** package indexes (module and
+/// system) concurrently — dependency resolution can cross package types.
+///
+/// # Errors
+///
+/// Fails when the installation, license or either index cannot be resolved.
+async fn load_indexes(
+    global: &GlobalArgs,
+    reporter: &Reporter,
+) -> anyhow::Result<(Installation, resolve::Indexes, api::Client)> {
+    let installation = discovery::resolve(global.data_path.as_deref())?;
+    let license = installation.load_license()?;
+    let client = api::Client::new(license)?;
+    let cache = index::Cache::open()?;
+
+    let spinner = reporter.spinner("loading package indexes");
+    let (module, system) = tokio::join!(
+        cache.ensure(PackageType::Module, &client, false),
+        cache.ensure(PackageType::System, &client, false),
+    );
+    spinner.finish_and_clear();
+
+    let module = report_source(PackageType::Module, module, reporter)?;
+    let system = report_source(PackageType::System, system, reporter)?;
+    Ok((installation, resolve::Indexes { module, system }, client))
+}
+
+/// Unwraps one index load, reporting where the data came from.
+///
+/// # Errors
+///
+/// Propagates the load failure itself.
+fn report_source(
+    kind: PackageType,
+    result: Result<(index::Snapshot, index::Source), index::Error>,
+    reporter: &Reporter,
+) -> anyhow::Result<index::Snapshot> {
     let (snapshot, source) = result?;
     match source {
         index::Source::Refreshed => reporter.detail(&format!(
@@ -121,7 +162,7 @@ async fn load_snapshot(
             ui::format_age(snapshot.age())
         )),
     }
-    Ok((installation, snapshot, client))
+    Ok(snapshot)
 }
 
 /// Scans the installed packages of `kind`, warning about directories that
@@ -364,13 +405,25 @@ async fn install_packages(
     global: &GlobalArgs,
     reporter: &Reporter,
 ) -> anyhow::Result<ExitCode> {
-    let (installation, snapshot, client) = load_snapshot(kind, global, reporter).await?;
+    let (installation, indexes, client) = load_indexes(global, reporter).await?;
     report_recovery(&install::recover(&installation), reporter);
-    let installed = installed_map(&installation, kind, reporter)?;
+    let (installed, sets) = scan_installed(&installation, kind, reporter)?;
 
     let mut summary = Summary::default();
-    let requests = select_install_requests(names, &snapshot, &installed, reporter, &mut summary);
-    let jobs = resolve_jobs(&client, kind, &requests, reporter, &mut summary).await;
+    let requests =
+        select_install_requests(names, indexes.get(kind), &installed, reporter, &mut summary);
+    let jobs = plan_jobs(
+        &client,
+        &indexes,
+        &sets,
+        kind,
+        &requests,
+        true,
+        global,
+        reporter,
+        &mut summary,
+    )
+    .await?;
     execute_jobs(
         &installation,
         &client,
@@ -399,18 +452,35 @@ async fn update_packages(
     global: &GlobalArgs,
     reporter: &Reporter,
 ) -> anyhow::Result<ExitCode> {
-    let (installation, snapshot, client) = load_snapshot(kind, global, reporter).await?;
+    let (installation, indexes, client) = load_indexes(global, reporter).await?;
     report_recovery(&install::recover(&installation), reporter);
-    let installed = installed_map(&installation, kind, reporter)?;
+    let (installed, sets) = scan_installed(&installation, kind, reporter)?;
 
     let mut summary = Summary::default();
-    let requests =
-        select_update_requests(kind, names, &snapshot, &installed, reporter, &mut summary);
+    let requests = select_update_requests(
+        kind,
+        names,
+        indexes.get(kind),
+        &installed,
+        reporter,
+        &mut summary,
+    );
     if requests.is_empty() && summary.is_empty() {
         reporter.status(&format!("all installed {kind}s are up to date"));
         return Ok(ExitCode::SUCCESS);
     }
-    let jobs = resolve_jobs(&client, kind, &requests, reporter, &mut summary).await;
+    let jobs = plan_jobs(
+        &client,
+        &indexes,
+        &sets,
+        kind,
+        &requests,
+        false,
+        global,
+        reporter,
+        &mut summary,
+    )
+    .await?;
     execute_jobs(
         &installation,
         &client,
@@ -553,6 +623,119 @@ fn remove_packages(
     Ok(summary.finish(reporter))
 }
 
+/// Scans both package types, returning the detailed map for `kind` (for
+/// version comparisons) plus the id sets of both types (for dependency
+/// resolution).
+///
+/// # Errors
+///
+/// Fails when a packages directory cannot be listed at all.
+fn scan_installed(
+    installation: &Installation,
+    kind: PackageType,
+    reporter: &Reporter,
+) -> anyhow::Result<(HashMap<String, local::Installed>, resolve::InstalledSets)> {
+    let modules = installed_map(installation, PackageType::Module, reporter)?;
+    let systems = installed_map(installation, PackageType::System, reporter)?;
+    let sets = resolve::InstalledSets {
+        modules: modules.keys().cloned().collect(),
+        systems: systems.keys().cloned().collect(),
+    };
+    let detailed = match kind {
+        PackageType::Module => modules,
+        PackageType::System => systems,
+    };
+    Ok((detailed, sets))
+}
+
+/// Resolves dependencies for the selected packages and assembles the final
+/// job list: requested + required dependencies, plus recommended packages
+/// after one consolidated prompt (`--yes` and non-interactive sessions skip
+/// recommendations — they never auto-accept them).
+///
+/// # Errors
+///
+/// Fails only when the recommendation prompt itself fails.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal orchestration helper; a context struct would not make the single call site clearer"
+)]
+async fn plan_jobs(
+    client: &api::Client,
+    indexes: &resolve::Indexes,
+    installed: &resolve::InstalledSets,
+    kind: PackageType,
+    requests: &[&api::types::Package],
+    include_recommends: bool,
+    global: &GlobalArgs,
+    reporter: &Reporter,
+    summary: &mut Summary,
+) -> anyhow::Result<Vec<install::Job>> {
+    if requests.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let spinner = reporter.spinner("resolving dependencies");
+    let plan = resolve::plan(
+        client,
+        indexes,
+        installed,
+        kind,
+        requests,
+        include_recommends,
+    )
+    .await;
+    spinner.finish_and_clear();
+
+    for warning in &plan.warnings {
+        reporter.warn(warning);
+    }
+    for (name, reason) in &plan.failures {
+        summary.fail(name, "-", reason);
+    }
+
+    let mut jobs = plan.requested;
+    if !plan.required.is_empty() {
+        reporter.status(&format!(
+            "installing {} required dependenc{}: {}",
+            plan.required.len(),
+            if plan.required.len() == 1 { "y" } else { "ies" },
+            job_names(&plan.required)
+        ));
+        jobs.extend(plan.required);
+    }
+
+    if !plan.recommended.is_empty() {
+        let listing = job_names(&plan.recommended);
+        if global.yes {
+            reporter.status(&format!(
+                "skipping recommended packages ({listing}); --yes only accepts requirements"
+            ));
+        } else if reporter.is_interactive() {
+            let prompt = format!(
+                "also install {} recommended package(s) ({listing})?",
+                plan.recommended.len()
+            );
+            if reporter.confirm(&prompt, false)? {
+                jobs.extend(plan.recommended);
+            }
+        } else {
+            reporter.status(&format!(
+                "skipping recommended packages ({listing}); not an interactive session"
+            ));
+        }
+    }
+    Ok(jobs)
+}
+
+/// Comma-separated names of a job list.
+fn job_names(jobs: &[install::Job]) -> String {
+    jobs.iter()
+        .map(|job| job.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Warns about whatever the crash-recovery sweep found and did.
 fn report_recovery(recovery: &install::Recovery, reporter: &Reporter) {
     for name in &recovery.restored {
@@ -601,39 +784,6 @@ fn select_install_requests<'a>(
         requests.push(package);
     }
     requests
-}
-
-/// Fetches the manifests of the selected packages concurrently and turns
-/// them into download jobs; failures land in the summary.
-async fn resolve_jobs(
-    client: &api::Client,
-    kind: PackageType,
-    requests: &[&api::types::Package],
-    reporter: &Reporter,
-    summary: &mut Summary,
-) -> Vec<install::Job> {
-    if requests.is_empty() {
-        return Vec::new();
-    }
-    let spinner = reporter.spinner("resolving package manifests");
-    let resolved: Vec<(String, Result<install::Job, String>)> =
-        futures_util::stream::iter(requests.iter().map(|package| async move {
-            let job = resolve_job(client, kind, package).await;
-            (package.name.clone(), job)
-        }))
-        .buffer_unordered(constants::DOWNLOAD_CONCURRENCY)
-        .collect()
-        .await;
-    spinner.finish_and_clear();
-
-    let mut jobs = Vec::new();
-    for (name, result) in resolved {
-        match result {
-            Ok(job) => jobs.push(job),
-            Err(reason) => summary.fail(&name, "-", &reason),
-        }
-    }
-    jobs
 }
 
 /// Downloads all job archives in parallel (with progress bars), then swaps
@@ -793,59 +943,6 @@ fn warn_core_compatibility(package: &api::types::Package, reporter: &Reporter) {
             constants::foundry_version()
         ));
     }
-}
-
-/// Resolves a package into an installable [`install::Job`]: protected
-/// packages go through the auth endpoint for a signed URL, free packages
-/// through their manifest.
-///
-/// # Errors
-///
-/// Returns a human-readable reason when the URL cannot be resolved or the
-/// manifest belongs to a different package.
-async fn resolve_job(
-    client: &api::Client,
-    kind: PackageType,
-    package: &api::types::Package,
-) -> Result<install::Job, String> {
-    if package.is_protected {
-        let download = client
-            .get_protected_download(kind, &package.name, &package.version.version)
-            .await
-            .map_err(|error| format!("protected download authorization failed: {error}"))?;
-        return Ok(install::Job {
-            kind,
-            name: package.name.clone(),
-            version: package.version.version.clone(),
-            download_url: download,
-            protected: true,
-        });
-    }
-
-    let manifest = client
-        .fetch_manifest(&package.version.manifest)
-        .await
-        .map_err(|error| format!("manifest fetch failed: {error}"))?;
-    let Some(download) = manifest.download.clone() else {
-        return Err("the manifest declares no download URL".to_owned());
-    };
-    if let Some(id) = manifest.id()
-        && id != package.name
-    {
-        return Err(format!(
-            "the manifest belongs to `{id}`, not `{}`",
-            package.name
-        ));
-    }
-    Ok(install::Job {
-        kind,
-        name: package.name.clone(),
-        version: manifest
-            .version()
-            .unwrap_or_else(|| package.version.version.clone()),
-        download_url: download,
-        protected: false,
-    })
 }
 
 /// Lists installed packages whose index version differs from the installed
