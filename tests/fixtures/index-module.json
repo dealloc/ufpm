@@ -1,0 +1,391 @@
+{
+  "status": "success",
+  "type": "module",
+  "packages": [
+    {
+      "id": 3293,
+      "type": "module",
+      "name": "heliana-core",
+      "title": "Heliana's Guide to Monster Hunting",
+      "status": "approved",
+      "url": "https://loottavern.com/product/helianas-guide-to-monster-hunting/",
+      "is_exclusive": false,
+      "is_protected": true,
+      "marketplace_status": "published",
+      "author": "Loot Tavern",
+      "author_username": "loottavern",
+      "tags": [
+        [
+          "content",
+          "Content Packs"
+        ]
+      ],
+      "systems": [
+        "dnd5e"
+      ],
+      "version": {
+        "id": 81256,
+        "package": 3293,
+        "version": "2.4.1",
+        "manifest": "https://r2.foundryvtt.com/packages-public/heliana-core/module-2.4.1.json",
+        "notes": "",
+        "required_core_version": "14",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-05T13:58:10.787Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "14",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/creators/loot-tavern/",
+      "last_updated": "2026-06-05T13:58:18.147Z",
+      "href": "/packages/heliana-core",
+      "approved": true,
+      "memberships": [],
+      "content_provider_id": "loot-tavern",
+      "content_provider_name": "Loot Tavern",
+      "description": "Heliana’s Guide to Monster Hunting Track ‧ Hunt ‧ Craft Like monster hunting? Love crafting? Then pack your *grill of …",
+      "marketplace_url": "https://www.foundryvtt.store/products/heliana-core",
+      "requires": [
+        "dnd5e"
+      ]
+    },
+    {
+      "id": 4272,
+      "type": "module",
+      "name": "materialdeck-pf1",
+      "title": "Material Deck - Pathfinder 1",
+      "status": "approved",
+      "url": "https://github.com/MaterialFoundry/MaterialDeck_PF1",
+      "is_exclusive": false,
+      "is_protected": false,
+      "author": "Cris",
+      "author_username": "cris",
+      "tags": [
+        [
+          "tools",
+          "Tools and Controls"
+        ],
+        [
+          "zero-ai",
+          "Contains Zero AI"
+        ]
+      ],
+      "systems": [],
+      "version": {
+        "id": 81275,
+        "package": 4272,
+        "version": "2.1.0",
+        "manifest": "https://github.com/MaterialFoundry/MaterialDeck_PF1/releases/download/v2.1.0/module.json",
+        "notes": "https://github.com/MaterialFoundry/MaterialDeck_PF1/blob/main/changelog.md",
+        "required_core_version": "13",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-05T20:42:26.363Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "13",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/community/cris",
+      "last_updated": "2026-06-05T20:42:26.363Z",
+      "href": "/packages/materialdeck-pf1",
+      "approved": true,
+      "memberships": [],
+      "description": "This module adds support for Pathfinder 1 to Material Deck. Please check the Material Deck documentation for more info on …",
+      "requires": []
+    },
+    {
+      "id": 4273,
+      "type": "module",
+      "name": "materialdeck-pf2e",
+      "title": "Material Deck - Pathfinder 2e/Starfinder 2e",
+      "status": "approved",
+      "url": "https://github.com/MaterialFoundry/MaterialDeck_PF2e",
+      "is_exclusive": false,
+      "is_protected": false,
+      "author": "Cris",
+      "author_username": "cris",
+      "tags": [
+        [
+          "tools",
+          "Tools and Controls"
+        ],
+        [
+          "zero-ai",
+          "Contains Zero AI"
+        ]
+      ],
+      "systems": [],
+      "version": {
+        "id": 81273,
+        "package": 4273,
+        "version": "2.1.0",
+        "manifest": "https://github.com/MaterialFoundry/MaterialDeck_PF2e/releases/download/v2.1.0/module.json",
+        "notes": "https://github.com/MaterialFoundry/MaterialDeck_PF2e/blob/main/changelog.md",
+        "required_core_version": "13",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-05T20:36:31.005Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "13",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/community/cris",
+      "last_updated": "2026-06-05T20:36:31.005Z",
+      "href": "/packages/materialdeck-pf2e",
+      "approved": true,
+      "memberships": [],
+      "description": "This module adds support for Pathfinder 2e and Starfinder 2e to Material Deck. Please check the Material Deck documentation for …",
+      "requires": []
+    },
+    {
+      "id": 4274,
+      "type": "module",
+      "name": "materialdeck-sfrpg",
+      "title": "Material Deck - Starfinder",
+      "status": "approved",
+      "url": "https://github.com/MaterialFoundry/MaterialDeck_SFRPG",
+      "is_exclusive": false,
+      "is_protected": false,
+      "author": "Cris",
+      "author_username": "cris",
+      "tags": [
+        [
+          "tools",
+          "Tools and Controls"
+        ],
+        [
+          "zero-ai",
+          "Contains Zero AI"
+        ]
+      ],
+      "systems": [],
+      "version": {
+        "id": 81274,
+        "package": 4274,
+        "version": "2.1.0",
+        "manifest": "https://github.com/MaterialFoundry/MaterialDeck_SFRPG/releases/download/v2.1.0/module.json",
+        "notes": "https://github.com/MaterialFoundry/MaterialDeck_SFRPG/blob/main/changelog.md",
+        "required_core_version": "13",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-05T20:39:14.770Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "13",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/community/cris",
+      "last_updated": "2026-06-05T20:39:14.770Z",
+      "href": "/packages/materialdeck-sfrpg",
+      "approved": true,
+      "memberships": [],
+      "description": "This module adds support for Starfinder to Material Deck. Please check the Material Deck documentation for more info on Material …",
+      "requires": []
+    },
+    {
+      "id": 5285,
+      "type": "module",
+      "name": "materialdeck-premium",
+      "title": "Material Deck Premium",
+      "status": "approved",
+      "url": "https://www.patreon.com/materialfoundry",
+      "is_exclusive": false,
+      "is_protected": true,
+      "author": "Material Foundry",
+      "author_username": "cris",
+      "tags": [
+        [
+          "audio",
+          "Audio Improvements"
+        ],
+        [
+          "automation",
+          "Automation Enhancers"
+        ],
+        [
+          "combat",
+          "Combat Enhancements"
+        ],
+        [
+          "integration",
+          "External Integrations"
+        ],
+        [
+          "tools",
+          "Tools and Controls"
+        ],
+        [
+          "zero-ai",
+          "Contains Zero AI"
+        ]
+      ],
+      "systems": [],
+      "version": {
+        "id": 81271,
+        "package": 5285,
+        "version": "2.2.0",
+        "manifest": "https://r2.foundryvtt.com/packages-public/materialdeck-premium/module-2.2.0.json",
+        "notes": "",
+        "required_core_version": "13",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-05T20:29:34.994Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "13",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/creators/material-foundry/",
+      "last_updated": "2026-06-05T20:29:51.265Z",
+      "href": "/packages/materialdeck-premium",
+      "approved": true,
+      "memberships": [
+        307,
+        308
+      ],
+      "content_provider_id": "material-foundry",
+      "content_provider_name": "Material Foundry",
+      "description": "Material Deck is a premium module that allows you to control Foundry using an Elgato Stream Deck, which is a …",
+      "requires": []
+    },
+    {
+      "id": 6562,
+      "type": "module",
+      "name": "revolutionary-piratenames",
+      "title": "Pirate Name Generator",
+      "status": "approved",
+      "url": "https://github.com/revolutionarygamesco/pirate-names",
+      "is_exclusive": false,
+      "is_protected": false,
+      "author": "Revolutionary Games",
+      "author_username": "revolutionarygames",
+      "tags": [
+        [
+          "chat",
+          "Chat Log and Messaging"
+        ],
+        [
+          "content",
+          "Content Packs"
+        ]
+      ],
+      "systems": [],
+      "version": {
+        "id": 81174,
+        "package": 6562,
+        "version": "v1.3.0",
+        "manifest": "https://github.com/revolutionarygamesco/pirate-names/releases/download/v1.3.0/module.json",
+        "notes": "https://github.com/revolutionarygamesco/pirate-names/releases/tag/v1.3.0",
+        "required_core_version": "13",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-04T01:00:16.021Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "13",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/community/revolutionarygames",
+      "last_updated": "2026-06-04T01:00:16.021Z",
+      "href": "/packages/revolutionary-piratenames",
+      "approved": true,
+      "memberships": [],
+      "description": "During the Golden Age of Piracy, the Caribbean was dominated by the Spanish Empire, the British Empire, the Kingdom of …",
+      "requires": []
+    },
+    {
+      "id": 6854,
+      "type": "module",
+      "name": "revolutionary-pbshipgen",
+      "title": "Pirate Borg Ship Generator",
+      "status": "approved",
+      "url": "https://github.com/revolutionarygamesco/pb-ship-generator",
+      "is_exclusive": false,
+      "is_protected": false,
+      "author": "Revolutionary Games",
+      "author_username": "revolutionarygames",
+      "tags": [
+        [
+          "automation",
+          "Automation Enhancers"
+        ]
+      ],
+      "systems": [
+        "pirateborg"
+      ],
+      "version": {
+        "id": 81176,
+        "package": 6854,
+        "version": "v1.1.1",
+        "manifest": "https://github.com/revolutionarygamesco/pb-ship-generator/releases/download/v1.1.1/module.json",
+        "notes": "https://github.com/revolutionarygamesco/pb-ship-generator/releases/tag/v1.1.1",
+        "required_core_version": "13",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-04T01:11:13.693Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "13",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/community/revolutionarygames",
+      "last_updated": "2026-06-04T01:11:13.693Z",
+      "href": "/packages/revolutionary-pbshipgen",
+      "approved": true,
+      "memberships": [],
+      "description": "The base stats for sloops, brigantines, and frigates in Pirate Borg are a great start, but wouldn’t it be cool …",
+      "requires": [
+        "pirateborg"
+      ]
+    },
+    {
+      "id": 7655,
+      "type": "module",
+      "name": "cha-coc-fvtt-en-theorderofthestone",
+      "title": "Call of Cthulhu® - The Order of the Stone",
+      "status": "approved",
+      "url": "https://foundryvtt.com/packages/cha-coc-fvtt-en-theorderofthestone",
+      "is_exclusive": false,
+      "is_protected": true,
+      "author": "Chaosium Inc.",
+      "author_username": "thechaosium",
+      "tags": [],
+      "systems": [
+        "CoC7"
+      ],
+      "version": {
+        "id": 81268,
+        "package": 7655,
+        "version": "1.9",
+        "manifest": "https://r2.foundryvtt.com/packages-public/cha-coc-fvtt-en-theorderofthestone/module-1.9.json",
+        "notes": "",
+        "required_core_version": "13",
+        "compatible_core_version": "14",
+        "maximum_core_version": "",
+        "created_time": "2026-06-05T19:07:51.582Z"
+      },
+      "compatible_generation": 14,
+      "minimum": "13",
+      "maximum": null,
+      "verified": "14",
+      "author_href": "/creators/chaosium/",
+      "last_updated": "2026-06-05T19:08:08.105Z",
+      "href": "/packages/cha-coc-fvtt-en-theorderofthestone",
+      "approved": true,
+      "memberships": [],
+      "content_provider_id": "chaosium",
+      "content_provider_name": "Chaosium Inc.",
+      "description": "A Horror Mystery in Three Parts Can the investigators prevent the liberation of the Ruler of Chaos? Will they discover …",
+      "requires": [
+        "CoC7"
+      ]
+    }
+  ],
+  "owned": [
+    3293
+  ]
+}

@@ -6,6 +6,9 @@
 //! checks verbosity levels itself.
 
 use crate::cli::GlobalArgs;
+use indicatif::ProgressBar;
+use std::io::IsTerminal;
+use std::time::Duration;
 
 /// How much status output the user asked for.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -43,14 +46,25 @@ impl Verbosity {
 pub struct Reporter {
     /// The level every output decision is based on.
     verbosity: Verbosity,
+    /// Whether animated progress UI (spinners, bars) may be drawn.
+    progress: bool,
 }
 
 impl Reporter {
-    /// Builds a reporter from the global CLI flags.
+    /// Builds a reporter from the global CLI flags; progress UI is disabled
+    /// by `--no-progress` and whenever stderr is not a terminal.
     #[must_use]
     pub fn new(global: &GlobalArgs) -> Self {
         Self {
             verbosity: Verbosity::from_flags(global.quiet, global.verbose),
+            progress: !global.no_progress && std::io::stderr().is_terminal(),
+        }
+    }
+
+    /// Prints a status line; shown unless `--quiet` is set.
+    pub fn status(&self, message: &str) {
+        if self.verbosity >= Verbosity::Normal {
+            eprintln!("{message}");
         }
     }
 
@@ -66,6 +80,38 @@ impl Reporter {
         if self.verbosity >= Verbosity::Verbose {
             eprintln!("{message}");
         }
+    }
+
+    /// Starts a spinner with the given message on stderr.
+    ///
+    /// When progress UI is disabled (`--no-progress`, `--quiet`, or stderr
+    /// is not a terminal) the message is printed as a plain status line and
+    /// a hidden bar is returned, so callers never need to special-case it.
+    pub fn spinner(&self, message: &str) -> ProgressBar {
+        if self.progress && self.verbosity >= Verbosity::Normal {
+            let bar = ProgressBar::new_spinner().with_message(message.to_owned());
+            bar.enable_steady_tick(Duration::from_millis(120));
+            bar
+        } else {
+            self.status(message);
+            ProgressBar::hidden()
+        }
+    }
+}
+
+/// Formats a duration as a compact human-readable age such as `45s`, `12m`,
+/// `3h` or `2d`.
+#[must_use]
+pub fn format_age(age: Duration) -> String {
+    let secs = age.as_secs();
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else if secs < 86_400 {
+        format!("{}h", secs / 3600)
+    } else {
+        format!("{}d", secs / 86_400)
     }
 }
 
@@ -89,5 +135,14 @@ mod tests {
         assert_eq!(Verbosity::from_flags(false, 2), Verbosity::Debug);
         assert_eq!(Verbosity::from_flags(false, 3), Verbosity::Trace);
         assert_eq!(Verbosity::from_flags(false, 9), Verbosity::Trace);
+    }
+
+    /// Ages are formatted in the largest sensible unit.
+    #[test]
+    fn ages_use_compact_units() {
+        assert_eq!(format_age(Duration::from_secs(45)), "45s");
+        assert_eq!(format_age(Duration::from_secs(90)), "1m");
+        assert_eq!(format_age(Duration::from_hours(2)), "2h");
+        assert_eq!(format_age(Duration::from_secs(200_000)), "2d");
     }
 }

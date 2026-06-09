@@ -28,12 +28,19 @@ semicolon_if_nothing_returned = "warn"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "env"] }
 dirs = "6.0"
+indicatif = "0.18"
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "rustls-tls",
+] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["raw_value"] }
 thiserror = "2.0"
+tokio = { version = "1.45", features = ["macros", "rt"] }
 
 [dev-dependencies]
 tempfile = "3.20"
+wiremock = "0.6"
 
 # We create a separate profile called 'fast' that disables all optimisation in favour of faster compilation for use in CI.
 [profile.fast]

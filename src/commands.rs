@@ -3,6 +3,7 @@
 //! This layer stays thin: it wires the parsed CLI arguments to the domain
 //! modules (`foundry`, `api`, `index`, …) and owns user-facing orchestration.
 
+mod cache;
 mod doctor;
 
 use crate::cli::{Args, Command};
@@ -13,12 +14,12 @@ use crate::ui::Reporter;
 /// # Errors
 ///
 /// Propagates whatever error the executed command produces.
-pub fn run(args: &Args) -> anyhow::Result<()> {
+pub async fn run(args: &Args) -> anyhow::Result<()> {
     let reporter = Reporter::new(&args.global);
 
     match &args.command {
         Command::Doctor => doctor::run(&args.global, &reporter),
-        Command::Cache { .. } => not_implemented("cache"),
+        Command::Cache { action } => cache::run(action, &args.global, &reporter).await,
         Command::Module { .. } => not_implemented("module"),
         Command::System { .. } => not_implemented("system"),
     }

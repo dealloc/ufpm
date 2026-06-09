@@ -1,9 +1,9 @@
 //! `ufpm doctor`: prints a diagnostic report about the local setup.
 
 use crate::cli::GlobalArgs;
-use crate::constants;
-use crate::foundry::{Installation, RootSource, discovery};
-use crate::ui::Reporter;
+use crate::foundry::{Installation, PackageType, RootSource, discovery};
+use crate::ui::{self, Reporter};
+use crate::{constants, index};
 use std::path::Path;
 
 /// Resolves the installation and prints the diagnostic report to stdout.
@@ -53,7 +53,27 @@ fn print_report(installation: &Installation, reporter: &Reporter) {
         constants::foundry_version(),
         constants::FOUNDRY_VERSION_ENV
     );
-    println!("cache            not implemented yet");
+    print_cache_report();
+}
+
+/// Prints one line per package type describing the cached index state.
+fn print_cache_report() {
+    let Ok(cache) = index::Cache::open() else {
+        println!("cache            no platform cache directory");
+        return;
+    };
+
+    for kind in [PackageType::Module, PackageType::System] {
+        let label = format!("cache ({})", kind.api_name());
+        match cache.info(kind) {
+            Some(info) => println!(
+                "{label:<16} {} packages, fetched {} ago",
+                info.packages,
+                ui::format_age(info.age)
+            ),
+            None => println!("{label:<16} not cached"),
+        }
+    }
 }
 
 /// Counts the direct subdirectories of `dir`, treating a missing directory
