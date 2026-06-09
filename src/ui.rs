@@ -99,6 +99,37 @@ impl Reporter {
     }
 }
 
+/// Prints rows as a space-aligned table on stdout (the table *is* command
+/// data). The last column is printed unpadded so long text never produces
+/// trailing whitespace.
+pub fn print_table(header: &[&str], rows: &[Vec<String>]) {
+    let columns = header.len();
+    let mut widths: Vec<usize> = header.iter().map(|cell| cell.chars().count()).collect();
+    for row in rows {
+        for (width, cell) in widths.iter_mut().zip(row.iter()).take(columns - 1) {
+            *width = (*width).max(cell.chars().count());
+        }
+    }
+
+    let render = |cells: Vec<&str>| {
+        let mut line = String::new();
+        for (position, (cell, width)) in cells.iter().zip(&widths).enumerate() {
+            if position + 1 == columns {
+                line.push_str(cell);
+            } else {
+                line.push_str(cell);
+                line.extend(std::iter::repeat_n(' ', width - cell.chars().count() + 2));
+            }
+        }
+        println!("{}", line.trim_end());
+    };
+
+    render(header.to_vec());
+    for row in rows {
+        render(row.iter().map(String::as_str).collect());
+    }
+}
+
 /// Formats a duration as a compact human-readable age such as `45s`, `12m`,
 /// `3h` or `2d`.
 #[must_use]

@@ -5,31 +5,36 @@
 
 mod cache;
 mod doctor;
+mod package;
 
 use crate::cli::{Args, Command};
+use crate::foundry::PackageType;
 use crate::ui::Reporter;
+use std::process::ExitCode;
 
-/// Dispatches the parsed command line to the matching command implementation.
+/// Dispatches the parsed command line to the matching command implementation
+/// and returns the process exit code.
 ///
 /// # Errors
 ///
 /// Propagates whatever error the executed command produces.
-pub async fn run(args: &Args) -> anyhow::Result<()> {
+pub async fn run(args: &Args) -> anyhow::Result<ExitCode> {
     let reporter = Reporter::new(&args.global);
 
     match &args.command {
-        Command::Doctor => doctor::run(&args.global, &reporter),
-        Command::Cache { action } => cache::run(action, &args.global, &reporter).await,
-        Command::Module { .. } => not_implemented("module"),
-        Command::System { .. } => not_implemented("system"),
+        Command::Doctor => {
+            doctor::run(&args.global, &reporter)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Cache { action } => {
+            cache::run(action, &args.global, &reporter).await?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Module { action } => {
+            package::run(PackageType::Module, action, &args.global, &reporter).await
+        }
+        Command::System { action } => {
+            package::run(PackageType::System, action, &args.global, &reporter).await
+        }
     }
-}
-
-/// Stub for commands scheduled in a later implementation phase (see `PLAN.md`).
-///
-/// # Errors
-///
-/// Always fails with a "not implemented yet" message; that is the point.
-fn not_implemented(domain: &str) -> anyhow::Result<()> {
-    anyhow::bail!("`ufpm {domain}` is not implemented yet")
 }

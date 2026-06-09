@@ -1,6 +1,8 @@
 //! Reading and modelling a local `FoundryVTT` installation.
 
 pub mod discovery;
+pub mod local;
+pub mod version;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -24,6 +26,24 @@ impl PackageType {
         match self {
             Self::Module => "module",
             Self::System => "system",
+        }
+    }
+
+    /// The `Data` subdirectory installed packages of this type live in.
+    #[must_use]
+    pub fn directory(self) -> &'static str {
+        match self {
+            Self::Module => "modules",
+            Self::System => "systems",
+        }
+    }
+
+    /// The manifest filename packages of this type carry.
+    #[must_use]
+    pub fn manifest_filename(self) -> &'static str {
+        match self {
+            Self::Module => "module.json",
+            Self::System => "system.json",
         }
     }
 }
@@ -121,16 +141,10 @@ impl Installation {
         self.root.join("Data")
     }
 
-    /// The directory containing installed modules.
+    /// The directory containing installed packages of the given type.
     #[must_use]
-    pub fn modules_dir(&self) -> PathBuf {
-        self.data_dir().join("modules")
-    }
-
-    /// The directory containing installed systems.
-    #[must_use]
-    pub fn systems_dir(&self) -> PathBuf {
-        self.data_dir().join("systems")
+    pub fn packages_dir(&self, kind: PackageType) -> PathBuf {
+        self.data_dir().join(kind.directory())
     }
 
     /// The directory containing the user's worlds.

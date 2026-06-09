@@ -29,7 +29,7 @@ async fn main() -> ExitCode {
     let args = cli::Args::parse();
 
     match commands::run(&args).await {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(error) => {
             eprintln!("error: {error}");
             for cause in error.chain().skip(1) {

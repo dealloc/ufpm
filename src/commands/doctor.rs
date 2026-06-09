@@ -38,11 +38,11 @@ fn print_report(installation: &Installation, reporter: &Reporter) {
     println!("license.json     {license}");
     println!(
         "modules          {}",
-        count_subdirectories(&installation.modules_dir(), reporter)
+        count_subdirectories(&installation.packages_dir(PackageType::Module), reporter)
     );
     println!(
         "systems          {}",
-        count_subdirectories(&installation.systems_dir(), reporter)
+        count_subdirectories(&installation.packages_dir(PackageType::System), reporter)
     );
     println!(
         "worlds           {}",

@@ -25,10 +25,6 @@ pub struct PackagesResponse {
 ///
 /// The index is a snapshot: [`Package::version`] describes the *latest*
 /// version only, and older versions can never be retrieved.
-#[allow(
-    dead_code,
-    reason = "modelled after the API contract; the remaining fields are consumed by the read-only query commands (PLAN.md phase 3) — remove this attribute then"
-)]
 #[derive(Clone, Debug, Deserialize)]
 pub struct Package {
     /// Numeric package ID, matched against [`PackagesResponse::owned`].
@@ -77,10 +73,6 @@ pub struct Package {
 }
 
 /// The latest-version snapshot of a package.
-#[allow(
-    dead_code,
-    reason = "modelled after the API contract; the remaining fields are consumed by the read-only query commands (PLAN.md phase 3) — remove this attribute then"
-)]
 #[derive(Clone, Debug, Deserialize)]
 pub struct VersionInfo {
     /// The version string; free-form in practice (`1.2.3`, `V1.1`, `1..1`).
