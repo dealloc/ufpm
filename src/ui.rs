@@ -187,6 +187,13 @@ impl Downloads {
                 bar
             })
     }
+
+    /// Clears all bars from the terminal once all downloads have finished.
+    pub fn clear(&self) {
+        if let Some(multi) = &self.multi {
+            let _ = multi.clear();
+        }
+    }
 }
 
 /// Bar style for downloads with a known total size (MB transferred, speed).
@@ -202,6 +209,13 @@ pub fn byte_bar_style() -> ProgressStyle {
 fn spinner_bytes_style() -> ProgressStyle {
     ProgressStyle::with_template("{spinner} {msg:<28!} {bytes:>10} {bytes_per_sec}")
         .unwrap_or_else(|_| ProgressStyle::default_spinner())
+}
+
+/// Style applied to a download bar once the transfer is complete.
+#[must_use]
+pub fn done_bar_style() -> ProgressStyle {
+    ProgressStyle::with_template("✓ {msg:<28!} {bytes:>10}")
+        .unwrap_or_else(|_| ProgressStyle::default_bar())
 }
 
 /// Prints rows as a space-aligned table on stdout (the table *is* command

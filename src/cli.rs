@@ -123,9 +123,9 @@ pub enum PackageAction {
         /// The package slug (for example `dice-so-nice`).
         name: String,
     },
-    /// Install one or more packages.
-    Install {
-        /// The package slugs to install.
+    /// Add one or more packages.
+    Add {
+        /// The package slugs to add.
         #[arg(required = true)]
         names: Vec<String>,
     },

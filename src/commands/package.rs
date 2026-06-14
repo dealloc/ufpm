@@ -52,7 +52,7 @@ pub async fn run(
         }
         PackageAction::Info { name } => info(kind, name, global, reporter).await,
         PackageAction::Outdated { check } => outdated(kind, *check, global, reporter).await,
-        PackageAction::Install { names } => install_packages(kind, names, global, reporter).await,
+        PackageAction::Add { names } => install_packages(kind, names, global, reporter).await,
         PackageAction::Update { names } => update_packages(kind, names, global, reporter).await,
         PackageAction::Remove { names } => remove_packages(kind, names, global, reporter),
         PackageAction::Unused { prune } => unused(kind, *prune, global, reporter).await,
@@ -539,7 +539,7 @@ fn select_update_requests<'a>(
             continue;
         }
         let Some(local) = installed.get(name) else {
-            summary.fail(name, "-", "not installed; use `install`");
+            summary.fail(name, "-", "not installed; use `add`");
             continue;
         };
         let Some(package) = by_name.get(name.as_str()) else {
@@ -799,13 +799,15 @@ async fn execute_jobs(
             let downloads_dir = downloads_dir.clone();
             async move {
                 let result = download_with_reauth(client, &downloads_dir, &job, &bar).await;
-                bar.finish_and_clear();
+                bar.set_style(ui::done_bar_style());
+                bar.finish();
                 (job, result)
             }
         }))
         .buffer_unordered(constants::DOWNLOAD_CONCURRENCY)
         .collect()
         .await;
+    progress.clear();
 
     for (job, result) in downloaded {
         let outcome = match result {

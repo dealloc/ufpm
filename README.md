@@ -35,13 +35,13 @@ ufpm doctor                       # where is Foundry, is the license found, cach
 ufpm cache update                 # fetch the module + system indexes (one slow call each)
 ufpm module search dice           # search by name, title or author
 ufpm module info dice-so-nice     # everything the index knows about one package
-ufpm module install dice-so-nice  # resumable download, transactional install, deps included
+ufpm module add dice-so-nice       # resumable download, transactional install, deps included
 ufpm module outdated              # what has updates (exit 1 with --check, for scripts)
 ufpm module update                # apply all provably-newer updates
 ufpm module unused --prune        # delete what no world uses, after one confirmation
 ```
 
-Every `module` command exists for `system` too: `ufpm system outdated`, `ufpm system install pf2e`, …
+Every `module` command exists for `system` too: `ufpm system outdated`, `ufpm system add pf2e`, …
 
 ## Commands
 
@@ -51,7 +51,7 @@ Every `module` command exists for `system` too: `ufpm system outdated`, `ufpm sy
 | `module list [--installed] [--owned] [--limit N]` | List packages (badges: protected/owned/update) |
 | `module search <query> [--installed] [--owned]` | Case-insensitive search |
 | `module info <name>` | Details for one package |
-| `module install <name>…` | Install packages + required dependencies |
+| `module add <name>…` | Add packages + required dependencies |
 | `module outdated [--check]` | Preview available updates |
 | `module update [<name>…]` | Update named packages, or everything outdated |
 | `module remove <name>…` | Remove packages (confirms first) |
