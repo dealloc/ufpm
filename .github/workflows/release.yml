@@ -21,7 +21,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       version_without_v: ${{ steps.version.outputs.version_without_v }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
 
@@ -87,7 +87,7 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -109,8 +109,8 @@ jobs:
         run: |
           mkdir dist
           cp target/${{ matrix.target }}/release/ufpm dist/
-          cp LICENSE dist/
-          tar -czf ${{ matrix.archive }} -C dist ufpm LICENSE
+          cp LICENSE.md dist/
+          tar -czf ${{ matrix.archive }} -C dist ufpm LICENSE.md
 
       - name: Package (zip)
         if: ${{ endsWith(matrix.archive, '.zip') }}
@@ -118,8 +118,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/ufpm${{ matrix.binary_ext }}" dist/
-          Copy-Item LICENSE dist/
-          Compress-Archive -Path dist/ufpm${{ matrix.binary_ext }},dist/LICENSE -DestinationPath ${{ matrix.archive }}
+          Copy-Item LICENSE.md dist/
+          Compress-Archive -Path dist/ufpm${{ matrix.binary_ext }},dist/LICENSE.md -DestinationPath ${{ matrix.archive }}
 
       - uses: actions/download-artifact@v4
         with:
