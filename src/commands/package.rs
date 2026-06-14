@@ -315,7 +315,7 @@ async fn info(
 ) -> anyhow::Result<ExitCode> {
     let (installation, snapshot, _client) = load_snapshot(kind, global, reporter).await?;
     let Some(package) = snapshot.packages.iter().find(|p| p.name == name) else {
-        anyhow::bail!("the index lists no {kind} named `{name}`");
+        anyhow::bail!("the index contains no {kind} named `{name}`");
     };
     let installed = installed_map(&installation, kind, reporter)?;
     let local = installed.get(name);

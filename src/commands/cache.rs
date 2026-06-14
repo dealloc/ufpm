@@ -34,7 +34,7 @@ async fn update(global: &GlobalArgs, reporter: &Reporter) -> anyhow::Result<()> 
     let client = api::Client::new(license)?;
     let cache = index::Cache::open()?;
 
-    let spinner = reporter.spinner("fetching package indexes (one slow API call per type)");
+    let spinner = reporter.spinner("fetching package indexes");
     let (modules, systems) = tokio::join!(
         cache.ensure(PackageType::Module, &client, true),
         cache.ensure(PackageType::System, &client, true),

@@ -34,6 +34,7 @@ futures-util = { version = "0.3.32", default-features = false }
 indicatif = "0.18.4"
 reqwest = { version = "0.13.4", default-features = false, features = [
   "json",
+  "rustls"
 ] }
 rusty-leveldb = "4.0.1"
 serde = { version = "1.0.228", features = ["derive"] }
