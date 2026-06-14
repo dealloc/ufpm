@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  SQLX_OFFLINE: true
+
+jobs:
+  changelog:
+    name: Changelog
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_without_v: ${{ steps.version.outputs.version_without_v }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF##*/}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_without_v=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Generate release notes
+        run: git-cliff --latest --output RELEASE_NOTES.md
+
+      - name: Build release body
+        run: |
+          printf '%s\n\n' "${{ github.event.release.body }}" > RELEASE_BODY.md
+          cat RELEASE_NOTES.md >> RELEASE_BODY.md
+
+      - name: Update release with changelog
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.version.outputs.version }}
+          bodyFile: RELEASE_BODY.md
+          omitNameDuringUpdate: true
+          omitDraftDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-body
+          path: RELEASE_BODY.md
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: changelog
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive: ufpm-linux-x86_64.tar.gz
+
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            binary_ext: .exe
+            archive: ufpm-windows-x86_64.zip
+
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            archive: ufpm-macos-aarch64.tar.gz
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Set version in Cargo.toml
+        run: |
+          VERSION="${{ needs.changelog.outputs.version_without_v }}"
+          sed -i.bak "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (tar.gz)
+        if: ${{ endsWith(matrix.archive, '.tar.gz') }}
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/ufpm dist/
+          cp LICENSE dist/
+          tar -czf ${{ matrix.archive }} -C dist ufpm LICENSE
+
+      - name: Package (zip)
+        if: ${{ endsWith(matrix.archive, '.zip') }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/ufpm${{ matrix.binary_ext }}" dist/
+          Copy-Item LICENSE dist/
+          Compress-Archive -Path dist/ufpm${{ matrix.binary_ext }},dist/LICENSE -DestinationPath ${{ matrix.archive }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-body
+
+      - name: Upload artifact to release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.changelog.outputs.version }}
+          bodyFile: RELEASE_BODY.md
+          artifacts: ${{ matrix.archive }}
+          omitNameDuringUpdate: true
+          omitDraftDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
