@@ -19,6 +19,7 @@ use super::{Installation, RootSource};
 use serde::Deserialize;
 use std::io;
 use std::path::{Path, PathBuf};
+use tracing::{debug, trace};
 
 /// Errors that can occur while locating a `FoundryVTT` installation.
 #[derive(Debug, thiserror::Error)]
@@ -85,8 +86,10 @@ pub enum Error {
 /// root does not have the expected layout, or the installation is S3-backed.
 pub fn resolve(explicit: Option<&Path>) -> Result<Installation, Error> {
     if let Some(root) = explicit {
+        debug!(root = %root.display(), "using explicit data path");
         from_explicit(root)
     } else {
+        trace!("discovering FoundryVTT installation from platform defaults");
         let base = platform_base().ok_or(Error::NoPlatformDefault)?;
         from_default_base(&base)
     }
@@ -132,6 +135,7 @@ fn from_default_base(base: &Path) -> Result<Installation, Error> {
     }
 
     let root = options.data_path.unwrap_or(default_root);
+    debug!(root = %root.display(), "resolved installation root");
     let installation = Installation::new(root, RootSource::Discovered);
     validate(&installation)?;
     Ok(installation)

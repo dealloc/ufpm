@@ -10,6 +10,15 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::io::IsTerminal;
 use std::time::Duration;
 
+/// Installs the `tracing-subscriber` fmt layer, writing structured log lines
+/// to stderr at the given maximum level.
+fn install_tracing(level: tracing::Level) {
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_writer(std::io::stderr)
+        .init();
+}
+
 /// How much status output the user asked for.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Verbosity {
@@ -57,10 +66,16 @@ impl Reporter {
     /// by `--no-progress` and whenever stderr is not a terminal.
     #[must_use]
     pub fn new(global: &GlobalArgs) -> Self {
+        let verbosity = Verbosity::from_flags(global.quiet, global.verbose);
+        match verbosity {
+            Verbosity::Debug => install_tracing(tracing::Level::DEBUG),
+            Verbosity::Trace => install_tracing(tracing::Level::TRACE),
+            _ => {}
+        }
         let terminal = std::io::stderr().is_terminal();
         Self {
-            verbosity: Verbosity::from_flags(global.quiet, global.verbose),
-            progress: !global.no_progress && terminal,
+            verbosity,
+            progress: !global.no_progress && terminal && verbosity < Verbosity::Debug,
             interactive: terminal,
         }
     }

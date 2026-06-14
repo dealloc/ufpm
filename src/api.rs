@@ -13,6 +13,7 @@ pub mod types;
 use crate::constants;
 use crate::foundry::PackageType;
 use std::time::Duration;
+use tracing::{debug, trace};
 
 /// Errors produced by the `FoundryVTT` package API client.
 #[derive(Debug, thiserror::Error)]
@@ -91,6 +92,7 @@ impl Client {
     /// Returns an [`Error`] when the request fails, the host answers with a
     /// non-success status, or the body is not a JSON manifest.
     pub async fn fetch_manifest(&self, url: &str) -> Result<types::RemoteManifest, Error> {
+        trace!(%url, "fetching package manifest");
         let response = self.http.get(url).send().await?;
         let status = response.status();
         if !status.is_success() {
@@ -113,6 +115,7 @@ impl Client {
         name: &str,
         version: &str,
     ) -> Result<String, Error> {
+        debug!(kind = %kind.api_name(), name, version, "requesting protected download URL");
         let body = serde_json::json!({
             "type": kind.api_name(),
             "name": name,
@@ -152,6 +155,7 @@ impl Client {
     /// Returns an [`Error`] when the request fails or the API answers with a
     /// non-success HTTP status.
     pub async fn get_packages_raw(&self, kind: PackageType) -> Result<String, Error> {
+        debug!(kind = %kind.api_name(), "fetching package index");
         let body = serde_json::json!({
             "type": kind.api_name(),
             "version": constants::foundry_version(),

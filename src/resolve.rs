@@ -16,6 +16,7 @@ use crate::api::types::DependencyRef;
 use crate::foundry::PackageType;
 use crate::{api, index, install};
 use std::collections::{HashSet, VecDeque};
+use tracing::{debug, trace};
 
 /// The package indexes for both package types.
 #[derive(Debug)]
@@ -174,8 +175,10 @@ fn enqueue_requirements(
 ) {
     for dep in &node.requires {
         if installed.contains(dep.kind, &dep.id) || visited.contains(&(dep.kind, dep.id.clone())) {
+            trace!(kind = %dep.kind.api_name(), id = %dep.id, "dependency already satisfied; skipping");
             continue;
         }
+        trace!(kind = %dep.kind.api_name(), id = %dep.id, "queuing hard dependency");
         queue.push_back((dep.kind, dep.id.clone(), false));
     }
 
@@ -229,6 +232,7 @@ async fn resolve_node(
     kind: PackageType,
     name: &str,
 ) -> Result<Node, String> {
+    trace!(kind = %kind.api_name(), name, "resolving package node");
     let snapshot = indexes.get(kind);
     let Some(package) = snapshot.packages.iter().find(|p| p.name == name) else {
         return Err("not found in the index".to_owned());
@@ -238,6 +242,7 @@ async fn resolve_node(
     }
 
     let manifest = client.fetch_manifest(&package.version.manifest).await;
+    debug!(kind = %kind.api_name(), name, manifest_ok = manifest.is_ok(), "manifest fetched");
 
     let job = if package.is_protected {
         let download = client

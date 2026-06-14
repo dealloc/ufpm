@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
+use tracing::{debug, trace};
 
 /// How often a failed download is attempted in total.
 const MAX_ATTEMPTS: u32 = 3;
@@ -80,6 +81,7 @@ pub async fn fetch(
         match fetch_once(http, url, dest, bar).await {
             Ok(()) => return Ok(()),
             Err(error) if attempt < MAX_ATTEMPTS && is_transient(&error) => {
+                debug!(%url, attempt, %error, "transient download error; retrying");
                 attempt += 1;
             }
             Err(error) => return Err(error),
@@ -113,6 +115,7 @@ async fn fetch_once(
     let meta_path = meta_path(dest);
     let existing = resumable_bytes(&part, &meta_path, url);
 
+    debug!(%url, resumed = existing.is_some(), "starting download attempt");
     let mut request = http.get(url);
     if let Some((offset, validator)) = &existing {
         request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
@@ -122,6 +125,7 @@ async fn fetch_once(
     let response = request.send().await?;
     let status = response.status();
     let resumed = status == reqwest::StatusCode::PARTIAL_CONTENT;
+    debug!(%url, %status, resumed, "download response received");
     if !status.is_success() {
         return Err(Error::Http { status });
     }
@@ -180,7 +184,9 @@ fn resumable_bytes(part: &Path, meta_path: &Path, url: &str) -> Option<(u64, Str
     if meta.url != canonical(url) {
         return None;
     }
-    Some((size, meta.validator?))
+    let validator = meta.validator?;
+    trace!(%size, "resuming partial download");
+    Some((size, validator))
 }
 
 /// Opens the partial file for appending at `offset` (truncating when the

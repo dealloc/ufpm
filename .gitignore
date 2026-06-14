@@ -9,3 +9,4 @@ CHANGELOG.md
 
 # AI files
 .claude/settings.local.json
+.claude/tasks/

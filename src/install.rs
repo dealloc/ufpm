@@ -15,6 +15,7 @@ use crate::foundry::{Installation, PackageType, local};
 use indicatif::ProgressBar;
 use std::io;
 use std::path::{Path, PathBuf};
+use tracing::{debug, trace};
 
 /// Errors that can occur while installing a package.
 #[derive(Debug, thiserror::Error)]
@@ -148,6 +149,7 @@ pub async fn download_archive(
 ///
 /// Returns an [`Error`] when extraction, validation or the swap fails.
 pub async fn apply(installation: &Installation, job: &Job, archive: PathBuf) -> Result<(), Error> {
+    debug!(kind = %job.kind.api_name(), name = %job.name, version = %job.version, "installing package");
     let staging = ufpm_dir(installation)
         .join("staging")
         .join(job.kind.directory())
@@ -167,10 +169,14 @@ pub async fn apply(installation: &Installation, job: &Job, archive: PathBuf) -> 
             name: job.name.clone(),
             source,
         })?;
+    debug!(name = %job.name, "extraction complete");
 
     let root = locate_package_root(&staging, job.kind, &job.name)?;
+    debug!(name = %job.name, root = %root.display(), "package root located");
     validate_staged(&root, job)?;
+    debug!(name = %job.name, "staged manifest validated");
     swap_in(installation, job.kind, &job.name, &root)?;
+    debug!(name = %job.name, "swap complete");
 
     // Best-effort cleanup; leftovers are swept by `recover` on the next run.
     let _ = std::fs::remove_dir_all(&staging);
@@ -261,12 +267,14 @@ fn swap_in(
 
     let had_previous = target.exists();
     if had_previous {
+        trace!(backup = %backup.display(), "creating backup of existing package");
         std::fs::rename(&target, &backup).map_err(|source| Error::Io {
             path: target.clone(),
             source,
         })?;
     }
 
+    trace!(target = %target.display(), "swapping staged package into place");
     if let Err(source) = std::fs::rename(staged_root, &target) {
         if had_previous {
             // Best-effort restore; `recover` finishes the job next run if
@@ -342,13 +350,15 @@ pub fn recover(installation: &Installation) -> Recovery {
             let parent = installation.packages_dir(kind);
             let target = parent.join(entry.file_name());
             if target.exists() {
-                // The swap completed; the backup is a leftover.
+                debug!(name, kind = %kind.api_name(), "recovery: removing completed-swap backup");
                 let _ = std::fs::remove_dir_all(entry.path());
             } else if let Err(error) = std::fs::create_dir_all(&parent)
                 .and_then(|()| std::fs::rename(entry.path(), &target))
             {
+                debug!(name, %error, "recovery: backup restoration failed");
                 recovery.failed.push((name, error));
             } else {
+                debug!(name, kind = %kind.api_name(), "recovery: restored orphaned backup");
                 recovery.restored.push(name);
             }
         }

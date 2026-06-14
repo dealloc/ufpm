@@ -19,6 +19,7 @@ use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tracing::{debug, trace};
 
 /// Errors produced by the index cache.
 #[derive(Debug, thiserror::Error)]
@@ -173,9 +174,11 @@ impl Cache {
         let mut cached = self.read(kind);
 
         if !force && let Some(snapshot) = cached.take_if(|snapshot| snapshot.age() <= INDEX_TTL) {
+            debug!(kind = %kind.api_name(), age = ?snapshot.age(), "serving index from cache");
             return Ok((snapshot, Source::Cached));
         }
 
+        debug!(kind = %kind.api_name(), "index TTL expired or forced; fetching from API");
         match client.get_packages_raw(kind).await {
             Ok(raw) => {
                 let response = api::parse_packages(&raw)?;
@@ -187,7 +190,10 @@ impl Cache {
                 ))
             }
             Err(error) => match cached {
-                Some(snapshot) => Ok((snapshot, Source::StaleFallback { error })),
+                Some(snapshot) => {
+                    debug!(kind = %kind.api_name(), %error, "index refresh failed; using stale data");
+                    Ok((snapshot, Source::StaleFallback { error }))
+                }
                 None => Err(error.into()),
             },
         }
@@ -232,6 +238,7 @@ impl Cache {
     /// treated as "no cache": the file will simply be refetched, which makes
     /// the cache self-healing.
     fn read(&self, kind: PackageType) -> Option<Snapshot> {
+        trace!(path = %self.file(kind).display(), "reading cached index");
         let raw = std::fs::read_to_string(self.file(kind)).ok()?;
         let envelope: Envelope = serde_json::from_str(&raw).ok()?;
         let response = api::parse_packages(envelope.response.get()).ok()?;
@@ -256,6 +263,7 @@ impl Cache {
             response: RawValue::from_string(raw.to_owned()).map_err(api::Error::Invalid)?,
         };
         let path = self.file(kind);
+        debug!(path = %path.display(), "persisting index to cache");
         let contents = serde_json::to_string(&envelope).map_err(api::Error::Invalid)?;
         std::fs::write(&path, contents).map_err(|source| Error::Io { path, source })
     }
