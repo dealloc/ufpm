@@ -11,6 +11,7 @@ mod constants;
 mod foundry;
 mod index;
 mod install;
+mod manifest;
 mod resolve;
 mod ui;
 

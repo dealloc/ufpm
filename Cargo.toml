@@ -42,6 +42,7 @@ serde_json = { version = "1.0.150", features = ["raw_value"] }
 tempfile = "3.27.0"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["fs", "macros", "rt", "io-util"] }
+toml = "1.1.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

@@ -72,6 +72,22 @@ pub enum Command {
     /// Diagnose the local setup: resolved paths, license and cache state.
     Doctor,
 
+    /// Export installed packages to a manifest file.
+    Export {
+        /// Only include packages enabled for this world.
+        #[arg(long, value_name = "WORLD")]
+        world: Option<String>,
+        /// Where to write the manifest (default: ufpm.toml).
+        #[arg(short, long, value_name = "PATH")]
+        output: Option<PathBuf>,
+    },
+
+    /// Install packages listed in a manifest file.
+    Import {
+        /// The manifest file to read (default: ufpm.toml).
+        path: Option<PathBuf>,
+    },
+
     /// Generate a shell completion script on stdout.
     #[command(hide = true)]
     Completions {

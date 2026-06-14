@@ -5,6 +5,8 @@
 
 mod cache;
 mod doctor;
+mod export;
+mod import;
 mod package;
 
 use crate::cli::{Args, Command};
@@ -35,6 +37,13 @@ pub async fn run(args: &Args) -> anyhow::Result<ExitCode> {
         }
         Command::System { action } => {
             package::run(PackageType::System, action, &args.global, &reporter).await
+        }
+        Command::Export { world, output } => {
+            export::run(world.as_deref(), output.as_deref(), &args.global, &reporter).await?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Import { path } => {
+            import::run(path.as_deref(), &args.global, &reporter).await
         }
         Command::Completions { shell } => {
             let mut command = <Args as clap::CommandFactory>::command();

@@ -387,7 +387,7 @@ async fn info(
 ///
 /// Fails when the index or installation cannot be loaded at all; individual
 /// package failures are reported in the summary and through the exit code.
-async fn install_packages(
+pub(crate) async fn install_packages(
     kind: PackageType,
     names: &[String],
     global: &GlobalArgs,

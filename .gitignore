@@ -6,6 +6,7 @@
 
 # Generated files
 CHANGELOG.md
+ufpm.toml
 
 # AI files
 .claude/settings.local.json

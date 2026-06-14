@@ -19,6 +19,7 @@ use rusty_leveldb::LdbIterator;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use tracing::{debug, trace};
 
 /// What the worlds of an installation use.
 #[derive(Debug, Default)]
@@ -50,6 +51,13 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
+
+    /// The requested world does not exist.
+    #[error("world '{id}' was not found")]
+    WorldNotFound {
+        /// The world id that was requested.
+        id: String,
+    },
 }
 
 /// The subset of a `world.json` that the usage scan reads.
@@ -58,6 +66,57 @@ struct WorldManifest {
     /// The system the world is built on.
     #[serde(default)]
     system: Option<String>,
+}
+
+/// Scans a single world by id and returns what it uses.
+///
+/// # Errors
+///
+/// Returns [`Error::WorldNotFound`] when no `worlds/<id>/world.json` exists.
+/// Per-world read problems (unreadable database, etc.) are recorded in
+/// [`Usage::unreadable`] rather than returned as hard errors.
+pub fn scan_world(installation: &Installation, world_id: &str) -> Result<Usage, Error> {
+    let path = installation.worlds_dir().join(world_id);
+    debug!(world = world_id, path = %path.display(), "scanning single world");
+    if !path.join("world.json").is_file() {
+        debug!(world = world_id, "world.json not found");
+        return Err(Error::WorldNotFound {
+            id: world_id.to_owned(),
+        });
+    }
+
+    let mut usage = Usage {
+        worlds: 1,
+        ..Usage::default()
+    };
+
+    match read_world_system(&path) {
+        Ok(Some(system)) => {
+            debug!(world = world_id, system, "found system");
+            usage.systems.insert(system);
+        }
+        Ok(None) => {
+            debug!(world = world_id, "no system declared in world.json");
+        }
+        Err(reason) => {
+            debug!(world = world_id, reason, "failed to read world system");
+            usage.unreadable.push((world_id.to_owned(), reason));
+            return Ok(usage);
+        }
+    }
+
+    match read_enabled_modules(&path) {
+        Ok(modules) => {
+            debug!(world = world_id, count = modules.len(), "found enabled modules");
+            usage.modules.extend(modules);
+        }
+        Err(reason) => {
+            debug!(world = world_id, reason, "failed to read enabled modules");
+            usage.unreadable.push((world_id.to_owned(), reason));
+        }
+    }
+
+    Ok(usage)
 }
 
 /// Scans every world in the installation for the system it uses and the
@@ -69,8 +128,10 @@ struct WorldManifest {
 /// all; per-world problems land in [`Usage::unreadable`] instead.
 pub fn scan_usage(installation: &Installation) -> Result<Usage, Error> {
     let dir = installation.worlds_dir();
+    debug!(dir = %dir.display(), "scanning all worlds");
     let mut usage = Usage::default();
     if !dir.exists() {
+        debug!("worlds directory does not exist; skipping");
         return Ok(usage);
     }
 
@@ -83,28 +144,41 @@ pub fn scan_usage(installation: &Installation) -> Result<Usage, Error> {
         let path = entry.path();
         // Only directories with a world.json are worlds.
         if !path.is_dir() || !path.join("world.json").is_file() {
+            trace!(path = %path.display(), "skipping non-world entry");
             continue;
         }
         let id = entry.file_name().to_string_lossy().into_owned();
+        debug!(world = %id, "scanning world");
         usage.worlds += 1;
 
         match read_world_system(&path) {
             Ok(Some(system)) => {
+                debug!(world = %id, system, "found system");
                 usage.systems.insert(system);
             }
-            Ok(None) => {}
+            Ok(None) => {
+                debug!(world = %id, "no system declared in world.json");
+            }
             Err(reason) => {
+                debug!(world = %id, reason, "failed to read world system");
                 usage.unreadable.push((id, reason));
                 continue;
             }
         }
 
         match read_enabled_modules(&path) {
-            Ok(modules) => usage.modules.extend(modules),
-            Err(reason) => usage.unreadable.push((id, reason)),
+            Ok(modules) => {
+                debug!(world = %id, count = modules.len(), "found enabled modules");
+                usage.modules.extend(modules);
+            }
+            Err(reason) => {
+                debug!(world = %id, reason, "failed to read enabled modules");
+                usage.unreadable.push((id, reason));
+            }
         }
     }
 
+    debug!(worlds = usage.worlds, unreadable = usage.unreadable.len(), "world scan complete");
     Ok(usage)
 }
 
@@ -115,10 +189,13 @@ pub fn scan_usage(installation: &Installation) -> Result<Usage, Error> {
 /// Returns a human-readable reason when the manifest cannot be read or
 /// parsed.
 fn read_world_system(world: &Path) -> Result<Option<String>, String> {
-    let raw = std::fs::read_to_string(world.join("world.json"))
+    let manifest_path = world.join("world.json");
+    trace!(path = %manifest_path.display(), "reading world.json");
+    let raw = std::fs::read_to_string(&manifest_path)
         .map_err(|error| format!("world.json unreadable: {error}"))?;
     let manifest: WorldManifest =
         serde_json::from_str(&raw).map_err(|error| format!("world.json invalid: {error}"))?;
+    trace!(system = ?manifest.system, "parsed world.json");
     Ok(manifest.system)
 }
 
@@ -133,14 +210,17 @@ fn read_world_system(world: &Path) -> Result<Option<String>, String> {
 /// Returns a human-readable reason when the database exists but cannot be
 /// copied or read.
 fn read_enabled_modules(world: &Path) -> Result<HashSet<String>, String> {
-    let database = world.join("data");
+    let database = world.join("data").join("settings");
+    trace!(path = %database.display(), "checking for settings database");
     if !database.is_dir() {
+        debug!(path = %database.display(), "settings database not present; world has no enabled modules");
         return Ok(HashSet::new());
     }
 
     let temp =
         tempfile::tempdir().map_err(|error| format!("could not create a temp dir: {error}"))?;
     let copy = temp.path().join("data");
+    trace!(src = %database.display(), dst = %copy.display(), "copying settings database to temp dir");
     copy_dir(&database, &copy)
         .map_err(|error| format!("could not copy the world database: {error}"))?;
 
@@ -148,6 +228,7 @@ fn read_enabled_modules(world: &Path) -> Result<HashSet<String>, String> {
         create_if_missing: false,
         ..rusty_leveldb::Options::default()
     };
+    debug!(path = %copy.display(), "opening settings database copy");
     let mut db = rusty_leveldb::DB::open(&copy, options)
         .map_err(|error| format!("could not open the world database: {error}"))?;
     let mut iter = db
@@ -155,25 +236,32 @@ fn read_enabled_modules(world: &Path) -> Result<HashSet<String>, String> {
         .map_err(|error| format!("could not iterate the world database: {error}"))?;
 
     let mut modules = HashSet::new();
-    while let Some((_, value)) = iter.next() {
+    while let Some((key, value)) = iter.next() {
+        trace!(key = %String::from_utf8_lossy(&key), "iterating settings record");
         let Ok(document) = serde_json::from_slice::<serde_json::Value>(&value) else {
+            trace!(key = %String::from_utf8_lossy(&key), "skipping non-JSON record");
             continue;
         };
-        if document.get("key").and_then(serde_json::Value::as_str)
-            != Some("core.moduleConfiguration")
-        {
+        let doc_key = document.get("key").and_then(serde_json::Value::as_str);
+        trace!(doc_key, "parsed document key");
+        if doc_key != Some("core.moduleConfiguration") {
             continue;
         }
         let Some(configuration) = document.get("value").and_then(serde_json::Value::as_str) else {
+            debug!("core.moduleConfiguration has no string value field; skipping");
             continue;
         };
+        trace!(raw = configuration, "raw moduleConfiguration value");
         let Ok(configuration) =
             serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(configuration)
         else {
+            debug!("could not parse moduleConfiguration as a JSON object; skipping");
             continue;
         };
         for (module, enabled) in configuration {
+            trace!(module, enabled = %enabled, "module configuration entry");
             if enabled.as_bool() == Some(true) {
+                debug!(module, "module is enabled");
                 modules.insert(module);
             }
         }
@@ -244,7 +332,7 @@ mod tests {
             create_if_missing: true,
             ..rusty_leveldb::Options::default()
         };
-        let mut db = rusty_leveldb::DB::open(world.join("data"), options).unwrap();
+        let mut db = rusty_leveldb::DB::open(world.join("data").join("settings"), options).unwrap();
         db.put(b"!settings!abc", document.to_string().as_bytes())
             .unwrap();
         db.put(b"!actors!xyz", br#"{ "name": "Strahd" }"#).unwrap();
@@ -278,10 +366,10 @@ mod tests {
         let world = write_world(&installation, "my-world", "pf2e");
         write_settings(&world, r#"{ "dice-so-nice": true }"#);
 
-        let snapshot: Vec<(String, u64)> = list_files(&world.join("data"));
+        let snapshot: Vec<(String, u64)> = list_files(&world.join("data").join("settings"));
         scan_usage(&installation).unwrap();
 
-        assert_eq!(list_files(&world.join("data")), snapshot);
+        assert_eq!(list_files(&world.join("data").join("settings")), snapshot);
     }
 
     /// File names and sizes of a directory, sorted.
@@ -307,8 +395,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let installation = fake_foundry(dir.path());
         let world = write_world(&installation, "broken", "dnd5e");
-        fs::create_dir_all(world.join("data")).unwrap();
-        fs::write(world.join("data").join("CURRENT"), "garbage\n").unwrap();
+        fs::create_dir_all(world.join("data").join("settings")).unwrap();
+        fs::write(world.join("data").join("settings").join("CURRENT"), "garbage\n").unwrap();
 
         let usage = scan_usage(&installation).unwrap();
 
