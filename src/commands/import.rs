@@ -22,9 +22,7 @@ pub async fn run(
     global: &GlobalArgs,
     reporter: &Reporter,
 ) -> anyhow::Result<ExitCode> {
-    let path = path
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| std::path::PathBuf::from("ufpm.toml"));
+    let path = path.map_or_else(|| std::path::PathBuf::from("ufpm.toml"), Path::to_path_buf);
 
     let contents = std::fs::read_to_string(&path)?;
     let manifest: ExportManifest = toml::from_str(&contents)?;
@@ -49,9 +47,7 @@ pub async fn run(
         modules_to_install.len(),
     ));
     if skipped > 0 {
-        reporter.status(&format!(
-            "skipping {skipped} already installed package(s)"
-        ));
+        reporter.status(&format!("skipping {skipped} already installed package(s)"));
     }
 
     if to_install == 0 {
@@ -71,12 +67,20 @@ pub async fn run(
         return Ok(ExitCode::SUCCESS);
     }
 
-    let system_code =
-        super::package::install_packages(PackageType::System, &systems_to_install, global, reporter)
-            .await?;
-    let module_code =
-        super::package::install_packages(PackageType::Module, &modules_to_install, global, reporter)
-            .await?;
+    let system_code = super::package::install_packages(
+        PackageType::System,
+        &systems_to_install,
+        global,
+        reporter,
+    )
+    .await?;
+    let module_code = super::package::install_packages(
+        PackageType::Module,
+        &modules_to_install,
+        global,
+        reporter,
+    )
+    .await?;
 
     if system_code == ExitCode::FAILURE || module_code == ExitCode::FAILURE {
         return Ok(ExitCode::FAILURE);
@@ -85,6 +89,12 @@ pub async fn run(
 }
 
 /// Collects the ids of all installed packages of the given type into a set.
+///
+/// # Errors
+///
+/// Returns an error if the packages directory exists but cannot be listed
+/// (e.g. a permissions error). A missing directory is not an error; it
+/// yields an empty set.
 fn installed_ids(
     installation: &crate::foundry::Installation,
     kind: PackageType,
@@ -97,7 +107,7 @@ fn installed_ids(
     Ok(scan.packages.into_iter().map(|p| p.id).collect())
 }
 
-/// Splits `slugs` into (to_install, already_installed), preserving order.
+/// Splits `slugs` into (`to_install`, `already_installed`), preserving order.
 fn partition(slugs: &[String], installed: &HashSet<String>) -> (Vec<String>, Vec<String>) {
     slugs
         .iter()

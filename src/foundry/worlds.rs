@@ -107,7 +107,11 @@ pub fn scan_world(installation: &Installation, world_id: &str) -> Result<Usage, 
 
     match read_enabled_modules(&path) {
         Ok(modules) => {
-            debug!(world = world_id, count = modules.len(), "found enabled modules");
+            debug!(
+                world = world_id,
+                count = modules.len(),
+                "found enabled modules"
+            );
             usage.modules.extend(modules);
         }
         Err(reason) => {
@@ -178,7 +182,11 @@ pub fn scan_usage(installation: &Installation) -> Result<Usage, Error> {
         }
     }
 
-    debug!(worlds = usage.worlds, unreadable = usage.unreadable.len(), "world scan complete");
+    debug!(
+        worlds = usage.worlds,
+        unreadable = usage.unreadable.len(),
+        "world scan complete"
+    );
     Ok(usage)
 }
 
@@ -396,7 +404,11 @@ mod tests {
         let installation = fake_foundry(dir.path());
         let world = write_world(&installation, "broken", "dnd5e");
         fs::create_dir_all(world.join("data").join("settings")).unwrap();
-        fs::write(world.join("data").join("settings").join("CURRENT"), "garbage\n").unwrap();
+        fs::write(
+            world.join("data").join("settings").join("CURRENT"),
+            "garbage\n",
+        )
+        .unwrap();
 
         let usage = scan_usage(&installation).unwrap();
 

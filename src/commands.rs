@@ -42,9 +42,7 @@ pub async fn run(args: &Args) -> anyhow::Result<ExitCode> {
             export::run(world.as_deref(), output.as_deref(), &args.global, &reporter).await?;
             Ok(ExitCode::SUCCESS)
         }
-        Command::Import { path } => {
-            import::run(path.as_deref(), &args.global, &reporter).await
-        }
+        Command::Import { path } => import::run(path.as_deref(), &args.global, &reporter).await,
         Command::Completions { shell } => {
             let mut command = <Args as clap::CommandFactory>::command();
             clap_complete::generate(*shell, &mut command, "ufpm", &mut std::io::stdout());

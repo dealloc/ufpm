@@ -24,9 +24,7 @@ pub async fn run(
     reporter: &Reporter,
 ) -> anyhow::Result<ExitCode> {
     let installation = discovery::resolve(global.data_path.as_deref())?;
-    let output = output
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| std::path::PathBuf::from("ufpm.toml"));
+    let output = output.map_or_else(|| std::path::PathBuf::from("ufpm.toml"), Path::to_path_buf);
 
     let manifest = if let Some(world_id) = world {
         world_manifest(&installation, world_id).await?
@@ -47,7 +45,16 @@ pub async fn run(
 }
 
 /// Builds a manifest from a single world's usage.
-async fn world_manifest(installation: &Installation, world_id: &str) -> anyhow::Result<ExportManifest> {
+///
+/// # Errors
+///
+/// Returns [`worlds::Error::WorldNotFound`] if no `worlds/<id>/world.json`
+/// exists. Database problems (corrupt files, permission errors) are recorded
+/// in [`worlds::Usage::unreadable`] rather than returned as errors.
+async fn world_manifest(
+    installation: &Installation,
+    world_id: &str,
+) -> anyhow::Result<ExportManifest> {
     let scanned = installation.clone();
     let id = world_id.to_owned();
     let usage = tokio::task::spawn_blocking(move || worlds::scan_world(&scanned, &id))
@@ -67,20 +74,18 @@ async fn world_manifest(installation: &Installation, world_id: &str) -> anyhow::
 }
 
 /// Builds a manifest from all installed packages.
+///
+/// # Errors
+///
+/// Returns an error if the systems or modules packages directory exists but
+/// cannot be listed (e.g. a permissions error). A missing directory is not
+/// an error; it yields an empty list.
 fn all_manifest(installation: &Installation) -> anyhow::Result<ExportManifest> {
     let system_scan = local::scan(installation, PackageType::System)?;
     let module_scan = local::scan(installation, PackageType::Module)?;
 
-    let mut systems: Vec<String> = system_scan
-        .packages
-        .into_iter()
-        .map(|p| p.id)
-        .collect();
-    let mut modules: Vec<String> = module_scan
-        .packages
-        .into_iter()
-        .map(|p| p.id)
-        .collect();
+    let mut systems: Vec<String> = system_scan.packages.into_iter().map(|p| p.id).collect();
+    let mut modules: Vec<String> = module_scan.packages.into_iter().map(|p| p.id).collect();
     systems.sort();
     modules.sort();
 
